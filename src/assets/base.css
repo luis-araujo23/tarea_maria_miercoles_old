@@ -1,53 +1,63 @@
-/* color palette from <https://github.com/vuejs/theme> */
+/* UJAP + Splitwise Design System */
 :root {
-  --vt-c-white: #ffffff;
-  --vt-c-white-soft: #f8f8f8;
-  --vt-c-white-mute: #f2f2f2;
+  /* UJAP institutional colors (escudo oficial) */
+  --ujap-red: #d2232a;
+  --ujap-red-light: #e8353c;
+  --ujap-red-dark: #a81b22;
+  --ujap-blue: #2e58a6;
+  --ujap-blue-light: #3d6bc4;
+  --ujap-blue-dark: #234a8f;
+  --ujap-gold: #c5a059;
+  --ujap-gold-light: #d4b06a;
+  --ujap-gold-dark: #a88645;
+  --ujap-white: #ffffff;
 
-  --vt-c-black: #181818;
-  --vt-c-black-soft: #222222;
-  --vt-c-black-mute: #282828;
+  /* Splitwise-inspired UI tokens (adaptados a UJAP) */
+  --color-primary: var(--ujap-blue);
+  --color-primary-dark: var(--ujap-blue-dark);
+  --color-primary-light: rgba(46, 88, 166, 0.08);
+  --color-accent: var(--ujap-gold);
+  --color-danger: var(--ujap-red);
+  --color-danger-dark: var(--ujap-red-dark);
+  --color-warning: var(--ujap-gold);
 
-  --vt-c-indigo: #2c3e50;
+  --color-bg: #f5f3f0;
+  --color-bg-card: #ffffff;
+  --color-bg-muted: #faf8f5;
+  --color-border: #e8e2d9;
+  --color-border-light: #f0ebe3;
 
-  --vt-c-divider-light-1: rgba(60, 60, 60, 0.29);
-  --vt-c-divider-light-2: rgba(60, 60, 60, 0.12);
-  --vt-c-divider-dark-1: rgba(84, 84, 84, 0.65);
-  --vt-c-divider-dark-2: rgba(84, 84, 84, 0.48);
+  --color-text: #3d3d3d;
+  --color-text-muted: #6b6560;
+  --color-text-light: #9a948c;
+  --color-heading: #1a1a1a;
 
-  --vt-c-text-light-1: var(--vt-c-indigo);
-  --vt-c-text-light-2: rgba(60, 60, 60, 0.66);
-  --vt-c-text-dark-1: var(--vt-c-white);
-  --vt-c-text-dark-2: rgba(235, 235, 235, 0.64);
-}
+  --color-positive: var(--ujap-blue);
+  --color-negative: var(--ujap-red);
 
-/* semantic color variables for this project */
-:root {
-  --color-background: var(--vt-c-white);
-  --color-background-soft: var(--vt-c-white-soft);
-  --color-background-mute: var(--vt-c-white-mute);
+  /* Avatar palette (UJAP + Splitwise) */
+  --avatar-1: var(--ujap-blue);
+  --avatar-2: var(--ujap-red);
+  --avatar-3: var(--ujap-gold);
+  --avatar-4: var(--ujap-blue-light);
+  --avatar-5: var(--ujap-red-light);
+  --avatar-6: var(--ujap-gold-dark);
 
-  --color-border: var(--vt-c-divider-light-2);
-  --color-border-hover: var(--vt-c-divider-light-1);
+  /* Spacing & radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
 
-  --color-heading: var(--vt-c-text-light-1);
-  --color-text: var(--vt-c-text-light-1);
+  --shadow-sm: 0 1px 3px rgba(210, 35, 42, 0.06);
+  --shadow-md: 0 4px 12px rgba(46, 88, 166, 0.1);
+  --shadow-lg: 0 8px 24px rgba(46, 88, 166, 0.12);
+  --shadow-header: 0 2px 12px rgba(210, 35, 42, 0.12);
 
-  --section-gap: 160px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-background: var(--vt-c-black);
-    --color-background-soft: var(--vt-c-black-soft);
-    --color-background-mute: var(--vt-c-black-mute);
-
-    --color-border: var(--vt-c-divider-dark-2);
-    --color-border-hover: var(--vt-c-divider-dark-1);
-
-    --color-heading: var(--vt-c-text-dark-1);
-    --color-text: var(--vt-c-text-dark-2);
-  }
+  --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Libre Baskerville', 'Times New Roman', Georgia, serif;
+  --transition: 0.2s ease;
 }
 
 *,
@@ -55,32 +65,21 @@
 *::after {
   box-sizing: border-box;
   margin: 0;
-  font-weight: normal;
+  padding: 0;
 }
 
 body {
   min-height: 100vh;
   color: var(--color-text);
-  background: var(--color-background);
-  transition:
-    color 0.5s,
-    background-color 0.5s;
+  background: var(--color-bg);
   line-height: 1.6;
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    'Fira Sans',
-    'Droid Sans',
-    'Helvetica Neue',
-    sans-serif;
+  font-family: var(--font-family);
   font-size: 15px;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  font-family: inherit;
 }
