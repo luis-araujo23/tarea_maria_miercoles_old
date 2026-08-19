@@ -8,87 +8,109 @@ const emit = defineEmits(['limpiar-gastos']);
 const total = computed(() => {
   return props.gastos.reduce((acc, gasto) => acc + gasto.monto, 0);
 });
-
 </script>
 
 <template>
   <div class="resumen">
-    <h2>Resumen de Gastos</h2>
-    <div class="total-container">
-      <p class="label">Total acumulado</p>
-      <p class="amount">${{ total.toFixed(2) }}</p>
-    </div>
-    
-    <div class="stats">
-      <p>Total de movimientos: <strong>{{ gastos.length }}</strong></p>
+    <h2>Resumen</h2>
+    <div class="total-box">
+      <span class="total-label">Total acumulado</span>
+      <span class="total-amount">${{ total.toFixed(2) }}</span>
     </div>
 
-    <button class="btn-clear" v-if="gastos.length > 0" @click="emit('limpiar-gastos')">
-      Limpiar Todos
+    <div class="stats">
+      <div class="stat-row">
+        <span>Movimientos</span>
+        <strong>{{ gastos.length }}</strong>
+      </div>
+    </div>
+
+    <button
+      v-if="gastos.length > 0"
+      class="btn-clear"
+      @click="emit('limpiar-gastos')"
+    >
+      Limpiar Todo
     </button>
   </div>
 </template>
 
 <style scoped>
 .resumen {
-  background-color: #ffffff;
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  text-align: center;
-  color: #334155;
-  border: 1px solid #e2e8f0;
+  box-shadow: var(--shadow-sm);
+  position: sticky;
+  top: 5rem;
 }
 
 .resumen h2 {
-  margin-top: 0;
-  color: #0f172a;
-  font-size: 1.25rem;
-  margin-bottom: 1.5rem;
-  border-bottom: 1px solid #e2e8f0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin-bottom: 1.25rem;
   padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
 }
 
-.total-container {
-  background-color: #f8fafc;
-  padding: 1rem;
-  border-radius: 8px;
-  margin-bottom: 1.5rem;
+.total-box {
+  background: var(--color-gold-light);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  text-align: center;
+  margin-bottom: 1.25rem;
 }
 
-.total-container .label {
-  margin: 0;
-  font-size: 0.875rem;
-  color: #64748b;
+.total-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-gold);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.25rem;
 }
 
-.total-container .amount {
-  margin: 0.5rem 0 0 0;
-  font-size: 2rem;
+.total-amount {
+  display: block;
+  font-family: var(--font-heading);
   font-weight: 800;
-  color: #10b981;
+  font-size: 1.75rem;
+  color: var(--color-gold);
 }
 
 .stats {
-  margin-bottom: 1.5rem;
-  font-size: 0.95rem;
+  margin-bottom: 1.25rem;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  color: var(--color-text-light);
+}
+
+.stat-row strong {
+  color: var(--color-heading);
+  font-weight: 700;
 }
 
 .btn-clear {
   width: 100%;
-  padding: 0.75rem 1rem;
-  background-color: #f59e0b;
-  color: white;
-  border: none;
-  border-radius: 6px;
+  padding: 0.7rem 1rem;
+  font-family: var(--font-heading);
   font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
+  font-size: 0.875rem;
+  color: var(--color-white);
+  background: var(--color-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.2s;
 }
 
 .btn-clear:hover {
-  background-color: #d97706;
+  background: var(--color-primary-hover);
 }
 </style>
