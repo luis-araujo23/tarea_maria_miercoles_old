@@ -1,47 +1,29 @@
 <script setup lang="ts">
-import type { Gasto } from '../types/Gasto';
+import { computed } from 'vue'
+import type { Companero, Gasto } from '../types'
+import { getAvatarColor, getInitials } from '../utils/avatars'
+import { etiquetaDivision } from '../utils/balances'
+import { getCategoryIcon } from '../utils/categorias'
 
-defineProps<{ gasto: Gasto }>();
-const emit = defineEmits(['seleccionar', 'eliminar']);
+const props = defineProps<{
+  gasto: Gasto
+  companeros: Companero[]
+}>()
 
-const avatarColors = [
-  'var(--avatar-1)',
-  'var(--avatar-2)',
-  'var(--avatar-3)',
-  'var(--avatar-4)',
-  'var(--avatar-5)',
-  'var(--avatar-6)',
-];
+const emit = defineEmits(['editar', 'eliminar'])
 
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-}
+const pagador = computed(
+  () => props.companeros.find((c) => c.id === props.gasto.pagadoPorId)?.nombre ?? 'Desconocido'
+)
 
-function getAvatarColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return avatarColors[Math.abs(hash) % avatarColors.length] ?? 'var(--avatar-1)';
-}
+const fechaFormateada = computed(() => {
+  const [y, m, d] = props.gasto.fecha.split('-')
+  return `${d}/${m}/${y}`
+})
 
-function getCategoryIcon(descripcion: string): string {
-  const desc = descripcion.toLowerCase();
-  if (desc.includes('videobeam') || desc.includes('proyector') || desc.includes('data show')) return '📽️';
-  if (desc.includes('copia') || desc.includes('impres') || desc.includes('xerox')) return '🖨️';
-  if (desc.includes('hoja') || desc.includes('resma') || desc.includes('papel')) return '📄';
-  if (desc.includes('cuaderno') || desc.includes('libreta') || desc.includes('apunte')) return '📓';
-  if (desc.includes('libro') || desc.includes('manual') || desc.includes('texto')) return '📚';
-  if (desc.includes('lapic') || desc.includes('bolígrafo') || desc.includes('marcador')) return '✏️';
-  if (desc.includes('usb') || desc.includes('memoria') || desc.includes('calculadora')) return '💾';
-  if (desc.includes('laboratorio') || desc.includes('práctica') || desc.includes('practica')) return '🔬';
-  return '📎';
-}
+const divisionTexto = computed(() =>
+  etiquetaDivision(props.gasto.tipoDivision, props.gasto.divisiones, props.companeros)
+)
 </script>
 
 <template>
@@ -52,16 +34,18 @@ function getCategoryIcon(descripcion: string): string {
       </div>
       <div class="gasto-details">
         <h3 class="gasto-title">{{ gasto.descripcion }}</h3>
+        <p class="gasto-fecha">{{ fechaFormateada }}</p>
+        <p class="gasto-division">{{ divisionTexto }}</p>
         <div class="gasto-meta">
           <span
             class="avatar"
-            :style="{ backgroundColor: getAvatarColor(gasto.pagadoPor) }"
-            :title="gasto.pagadoPor"
+            :style="{ backgroundColor: getAvatarColor(pagador) }"
+            :title="pagador"
           >
-            {{ getInitials(gasto.pagadoPor) }}
+            {{ getInitials(pagador) }}
           </span>
           <span class="payer">
-            Pagado por <strong>{{ gasto.pagadoPor }}</strong>
+            Pagado por <strong>{{ pagador }}</strong>
           </span>
         </div>
       </div>
@@ -72,12 +56,12 @@ function getCategoryIcon(descripcion: string): string {
       <div class="gasto-actions">
         <button
           class="btn btn-ghost"
-          title="Ver detalle"
-          @click="emit('seleccionar', gasto.id)"
+          title="Editar gasto"
+          @click="emit('editar', gasto.id)"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-            <circle cx="12" cy="12" r="3"/>
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
           </svg>
         </button>
         <button
@@ -117,7 +101,7 @@ function getCategoryIcon(descripcion: string): string {
 
 .gasto-left {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 1rem;
   flex: 1;
   min-width: 0;
@@ -140,10 +124,23 @@ function getCategoryIcon(descripcion: string): string {
 }
 
 .gasto-title {
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.2rem;
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--color-heading);
+}
+
+.gasto-fecha {
+  margin: 0 0 0.2rem;
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+}
+
+.gasto-division {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  color: var(--ujap-blue);
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -166,7 +163,6 @@ function getCategoryIcon(descripcion: string): string {
   font-size: 0.6rem;
   font-weight: 700;
   color: white;
-  letter-spacing: -0.02em;
 }
 
 .payer {

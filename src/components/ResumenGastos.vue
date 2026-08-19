@@ -1,62 +1,82 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import type { Gasto } from '../types/Gasto';
+import { computed, ref } from 'vue'
+import type { Companero, Gasto, Pago } from '../types'
+import { getAvatarColor, getInitials } from '../utils/avatars'
+import { calcularBalances, simplificarDeudas } from '../utils/balances'
 
-const props = defineProps<{ gastos: Gasto[] }>();
-const emit = defineEmits(['limpiar-gastos']);
+const props = defineProps<{
+  gastos: Gasto[]
+  pagos: Pago[]
+  companeros: Companero[]
+}>()
+
+const emit = defineEmits<{
+  'registrar-pago': [payload: { deId: string; paraId: string; monto: number; nota?: string }]
+}>()
+
+const mostrarFormPago = ref(false)
+const deId = ref('')
+const paraId = ref('')
+const montoPago = ref<number | ''>('')
+const notaPago = ref('')
+const errorPago = ref('')
 
 const total = computed(() =>
   props.gastos.reduce((acc, gasto) => acc + gasto.monto, 0)
-);
+)
 
-const participantes = computed(() => {
-  const nombres = new Set<string>();
-  props.gastos.forEach((g) => nombres.add(g.pagadoPor));
-  return Array.from(nombres);
-});
+const balances = computed(() =>
+  calcularBalances(props.gastos, props.pagos, props.companeros)
+)
 
-const balances = computed(() => {
-  if (props.gastos.length === 0 || participantes.value.length === 0) return [];
+const deudasSimplificadas = computed(() => simplificarDeudas(balances.value))
 
-  const pagado: Record<string, number> = {};
-  participantes.value.forEach((p) => (pagado[p] = 0));
-  props.gastos.forEach((g) => {
-    pagado[g.pagadoPor] = (pagado[g.pagadoPor] ?? 0) + g.monto;
-  });
+const pagosOrdenados = computed(() =>
+  [...props.pagos].sort(
+    (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+  )
+)
 
-  const cuotaJusta = total.value / participantes.value.length;
-
-  return participantes.value.map((nombre) => ({
-    nombre,
-    pagado: pagado[nombre] ?? 0,
-    balance: (pagado[nombre] ?? 0) - cuotaJusta,
-  }));
-});
-
-const avatarColors = [
-  'var(--avatar-1)',
-  'var(--avatar-2)',
-  'var(--avatar-3)',
-  'var(--avatar-4)',
-  'var(--avatar-5)',
-  'var(--avatar-6)',
-];
-
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+function nombre(id: string): string {
+  return props.companeros.find((c) => c.id === id)?.nombre ?? 'Desconocido'
 }
 
-function getAvatarColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+function formatearFecha(fecha: string): string {
+  const [y, m, d] = fecha.split('-')
+  return `${d}/${m}/${y}`
+}
+
+function abrirFormPago(de?: string, para?: string, monto?: number) {
+  deId.value = de ?? props.companeros[0]?.id ?? ''
+  paraId.value = para ?? props.companeros[1]?.id ?? ''
+  montoPago.value = monto ?? ''
+  notaPago.value = ''
+  errorPago.value = ''
+  mostrarFormPago.value = true
+}
+
+function registrarPago() {
+  errorPago.value = ''
+  if (!deId.value || !paraId.value) {
+    errorPago.value = 'Selecciona quién paga y quién recibe'
+    return
   }
-  return avatarColors[Math.abs(hash) % avatarColors.length] ?? 'var(--avatar-1)';
+  if (deId.value === paraId.value) {
+    errorPago.value = 'El pagador y receptor deben ser distintos'
+    return
+  }
+  if (typeof montoPago.value !== 'number' || montoPago.value <= 0) {
+    errorPago.value = 'Ingresa un monto válido'
+    return
+  }
+
+  emit('registrar-pago', {
+    deId: deId.value,
+    paraId: paraId.value,
+    monto: montoPago.value,
+    nota: notaPago.value.trim() || undefined,
+  })
+  mostrarFormPago.value = false
 }
 </script>
 
@@ -72,23 +92,23 @@ function getAvatarColor(name: string): string {
       <span class="total-amount">${{ total.toFixed(2) }}</span>
       <span class="total-meta">
         {{ gastos.length }} {{ gastos.length === 1 ? 'movimiento' : 'movimientos' }}
-        · {{ participantes.length }} {{ participantes.length === 1 ? 'persona' : 'personas' }}
+        · {{ companeros.length }} {{ companeros.length === 1 ? 'persona' : 'personas' }}
       </span>
     </div>
 
-    <div v-if="balances.length > 0" class="balances">
-      <h3 class="balances-title">Saldos individuales</h3>
+    <div v-if="balances.length > 0 && gastos.length > 0" class="balances">
+      <h3 class="section-title">Saldos individuales</h3>
       <ul class="balance-list">
-        <li v-for="item in balances" :key="item.nombre" class="balance-item">
+        <li v-for="item in balances" :key="item.companeroId" class="balance-item">
           <div class="balance-person">
             <span
               class="avatar"
-              :style="{ backgroundColor: getAvatarColor(item.nombre) }"
+              :style="{ backgroundColor: getAvatarColor(nombre(item.companeroId)) }"
             >
-              {{ getInitials(item.nombre) }}
+              {{ getInitials(nombre(item.companeroId)) }}
             </span>
             <div class="balance-info">
-              <span class="balance-name">{{ item.nombre }}</span>
+              <span class="balance-name">{{ nombre(item.companeroId) }}</span>
               <span class="balance-paid">Pagó ${{ item.pagado.toFixed(2) }}</span>
             </div>
           </div>
@@ -105,22 +125,85 @@ function getAvatarColor(name: string): string {
       </p>
     </div>
 
-    <div v-else class="empty-balance">
-      <div class="empty-icon">📊</div>
-      <p>Registra copias, lápices, videobeam u otros gastos del semestre para ver el balance entre compañeros</p>
+    <div v-if="deudasSimplificadas.length > 0" class="deudas">
+      <h3 class="section-title">Quién le debe a quién</h3>
+      <ul class="deuda-list">
+        <li v-for="(deuda, i) in deudasSimplificadas" :key="i" class="deuda-item">
+          <span class="deuda-text">
+            <strong>{{ nombre(deuda.deId) }}</strong> le debe
+            <strong>${{ deuda.monto.toFixed(2) }}</strong> a
+            <strong>{{ nombre(deuda.paraId) }}</strong>
+          </span>
+          <button
+            type="button"
+            class="btn-settle"
+            @click="abrirFormPago(deuda.deId, deuda.paraId, deuda.monto)"
+          >
+            Registrar pago
+          </button>
+        </li>
+      </ul>
     </div>
 
-    <button
-      v-if="gastos.length > 0"
-      class="btn-clear"
-      @click="emit('limpiar-gastos')"
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="3 6 5 6 21 6"/>
-        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-      </svg>
-      Limpiar todos los registros
-    </button>
+    <div v-else-if="gastos.length > 0 && balances.length > 0" class="settled">
+      <span>✓</span> ¡Todos están a mano!
+    </div>
+
+    <div class="settle-section">
+      <button type="button" class="btn-settle-main" @click="abrirFormPago()">
+        Registrar pago
+      </button>
+
+      <form v-if="mostrarFormPago" class="pago-form" @submit.prevent="registrarPago">
+        <div class="field">
+          <label>Quién paga</label>
+          <select v-model="deId">
+            <option v-for="c in companeros" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Quién recibe</label>
+          <select v-model="paraId">
+            <option v-for="c in companeros" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Monto ($)</label>
+          <input v-model.number="montoPago" type="number" min="0.01" step="0.01" />
+        </div>
+        <div class="field">
+          <label>Nota (opcional)</label>
+          <input v-model="notaPago" type="text" placeholder="Ej: Transferencia" />
+        </div>
+        <p v-if="errorPago" class="error">{{ errorPago }}</p>
+        <div class="form-actions">
+          <button type="button" class="btn-cancel" @click="mostrarFormPago = false">
+            Cancelar
+          </button>
+          <button type="submit" class="btn-save">Confirmar pago</button>
+        </div>
+      </form>
+    </div>
+
+    <div v-if="pagosOrdenados.length > 0" class="historial">
+      <h3 class="section-title">Historial de pagos</h3>
+      <ul class="historial-list">
+        <li v-for="pago in pagosOrdenados" :key="pago.id" class="historial-item">
+          <div>
+            <span class="historial-text">
+              {{ nombre(pago.deId) }} pagó ${{ pago.monto.toFixed(2) }} a {{ nombre(pago.paraId) }}
+            </span>
+            <span v-if="pago.nota" class="historial-nota">{{ pago.nota }}</span>
+          </div>
+          <span class="historial-fecha">{{ formatearFecha(pago.fecha) }}</span>
+        </li>
+      </ul>
+    </div>
+
+    <div v-if="gastos.length === 0" class="empty-balance">
+      <div class="empty-icon">📊</div>
+      <p>Registra copias, lápices, videobeam u otros gastos para ver el balance.</p>
+    </div>
   </div>
 </template>
 
@@ -192,12 +275,16 @@ function getAvatarColor(name: string): string {
   color: var(--color-text-light);
 }
 
-.balances {
+.balances,
+.deudas,
+.settle-section,
+.historial {
   padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--color-border-light);
 }
 
-.balances-title {
-  margin: 0 0 1rem;
+.section-title {
+  margin: 0 0 0.85rem;
   font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -205,17 +292,22 @@ function getAvatarColor(name: string): string {
   color: var(--color-text-muted);
 }
 
-.balance-list {
+.balance-list,
+.deuda-list,
+.historial-list {
   list-style: none;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-.balance-item {
+.balance-item,
+.deuda-item,
+.historial-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.75rem;
   background: var(--color-bg-muted);
   border-radius: var(--radius-sm);
@@ -278,6 +370,138 @@ function getAvatarColor(name: string): string {
   text-align: center;
 }
 
+.deuda-item {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.deuda-text {
+  font-size: 0.875rem;
+  color: var(--color-text);
+  line-height: 1.4;
+}
+
+.btn-settle {
+  align-self: flex-start;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--ujap-gold);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settled {
+  padding: 1rem 1.5rem;
+  text-align: center;
+  color: var(--color-positive);
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.btn-settle-main {
+  width: 100%;
+  padding: 0.75rem;
+  background: var(--ujap-blue);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.pago-form {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--color-bg-muted);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-light);
+}
+
+.field {
+  margin-bottom: 0.75rem;
+}
+
+.field label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.875rem;
+}
+
+.error {
+  color: var(--ujap-red);
+  font-size: 0.8rem;
+  margin: 0 0 0.5rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.btn-cancel,
+.btn-save {
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-cancel {
+  background: white;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.btn-save {
+  background: var(--ujap-blue);
+  color: white;
+}
+
+.historial-item {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.historial-text {
+  font-size: 0.85rem;
+  color: var(--color-heading);
+  font-weight: 500;
+}
+
+.historial-nota {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-top: 0.15rem;
+}
+
+.historial-fecha {
+  font-size: 0.72rem;
+  color: var(--color-text-light);
+  margin-top: 0.25rem;
+}
+
 .empty-balance {
   padding: 2rem 1.5rem;
   text-align: center;
@@ -292,28 +516,5 @@ function getAvatarColor(name: string): string {
   margin: 0;
   font-size: 0.875rem;
   color: var(--color-text-muted);
-}
-
-.btn-clear {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  width: calc(100% - 3rem);
-  margin: 0 1.5rem 1.5rem;
-  padding: 0.75rem 1rem;
-  background: transparent;
-  color: var(--color-danger);
-  border: 1.5px solid var(--color-danger);
-  border-radius: var(--radius-sm);
-  font-weight: 600;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: background var(--transition), color var(--transition);
-}
-
-.btn-clear:hover {
-  background: var(--color-danger);
-  color: white;
 }
 </style>

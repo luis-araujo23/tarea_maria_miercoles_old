@@ -1,34 +1,168 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import type { Gasto } from './types/Gasto';
-import GastoCard from './components/GastoCard.vue';
-import ResumenGastos from './components/ResumenGastos.vue';
-import UjapLogo from './components/UjapLogo.vue';
+import { computed, ref } from 'vue'
+import type { Gasto, VistaApp } from './types'
+import { useAppStore } from './composables/useAppStore'
+import GastoCard from './components/GastoCard.vue'
+import ResumenGastos from './components/ResumenGastos.vue'
+import UjapLogo from './components/UjapLogo.vue'
+import FormularioGasto from './components/FormularioGasto.vue'
+import VistaCompaneros from './components/VistaCompaneros.vue'
+import VistaMateriales from './components/VistaMateriales.vue'
+import ToastNotificacion from './components/ToastNotificacion.vue'
+import ModalConfirmacion from './components/ModalConfirmacion.vue'
 
-const gastos = ref<Gasto[]>([]);
+const {
+  companeros,
+  gastos,
+  pagos,
+  nextGastoId,
+  nextPagoId,
+  nextCompaneroId,
+  nombreCompanero,
+} = useAppStore()
 
-onMounted(() => {
-  console.log('El componente ya está en pantalla');
-  gastos.value = [
-    { id: 1, descripcion: 'Copias de apuntes — Cálculo I (80 hojas)', monto: 12.00, pagadoPor: 'María' },
-    { id: 2, descripcion: 'Caja de lápices y bolígrafos para el grupo', monto: 6.50, pagadoPor: 'Juan' },
-    { id: 3, descripcion: 'Alquiler de videobeam — exposición final', monto: 25.00, pagadoPor: 'Carlos' },
-    { id: 4, descripcion: 'Resma de hojas tamaño carta', monto: 8.50, pagadoPor: 'Ana' },
-    { id: 5, descripcion: 'Impresión de trabajos de laboratorio (x4)', monto: 10.00, pagadoPor: 'María' },
-  ];
-});
+const vistaActiva = ref<VistaApp>('gastos')
+const formularioVisible = ref(false)
+const gastoEditando = ref<Gasto | null>(null)
+const nombreNuevoCompanero = ref('')
 
-const manejarEliminar = (id: number) => {
-  gastos.value = gastos.value.filter(g => g.id !== id);
-};
+const toast = ref({ visible: false, mensaje: '', tipo: 'success' as 'success' | 'error' | 'info' })
+let toastTimer: ReturnType<typeof setTimeout> | null = null
 
-const manejarSeleccionar = (id: number) => {
-  alert(`Gasto #${id} seleccionado desde el componente hijo.`);
-};
+const confirmacion = ref({
+  visible: false,
+  titulo: '',
+  mensaje: '',
+  onConfirmar: () => {},
+})
 
-const limpiarGastos = () => {
-  gastos.value = [];
-};
+const gastosOrdenados = computed(() =>
+  [...gastos.value].sort(
+    (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+  )
+)
+
+const navItems: { id: VistaApp; label: string }[] = [
+  { id: 'gastos', label: 'Gastos' },
+  { id: 'companeros', label: 'Compañeros' },
+  { id: 'materiales', label: 'Materiales' },
+]
+
+function mostrarToast(mensaje: string, tipo: 'success' | 'error' | 'info' = 'success') {
+  toast.value = { visible: true, mensaje, tipo }
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    toast.value.visible = false
+  }, 2800)
+}
+
+function abrirFormulario(gasto?: Gasto) {
+  gastoEditando.value = gasto ?? null
+  formularioVisible.value = true
+}
+
+function cerrarFormulario() {
+  formularioVisible.value = false
+  gastoEditando.value = null
+}
+
+type GastoPayload = Omit<Gasto, 'id'>
+
+function guardarGasto(payload: GastoPayload) {
+  if (gastoEditando.value) {
+    const idx = gastos.value.findIndex((g) => g.id === gastoEditando.value!.id)
+    if (idx >= 0) {
+      gastos.value[idx] = { ...gastoEditando.value, ...payload }
+    }
+    mostrarToast('Gasto actualizado correctamente')
+  } else {
+    gastos.value.unshift({ id: nextGastoId.value++, ...payload })
+    mostrarToast('Gasto agregado correctamente')
+  }
+  cerrarFormulario()
+}
+
+function solicitarEliminarGasto(id: number) {
+  const gasto = gastos.value.find((g) => g.id === id)
+  confirmacion.value = {
+    visible: true,
+    titulo: 'Eliminar gasto',
+    mensaje: `¿Eliminar "${gasto?.descripcion ?? 'este gasto'}"? Esta acción no se puede deshacer.`,
+    onConfirmar: () => {
+      gastos.value = gastos.value.filter((g) => g.id !== id)
+      mostrarToast('Gasto eliminado')
+      confirmacion.value.visible = false
+    },
+  }
+}
+
+function editarGasto(id: number) {
+  const gasto = gastos.value.find((g) => g.id === id)
+  if (gasto) abrirFormulario(gasto)
+}
+
+function registrarPago(payload: {
+  deId: string
+  paraId: string
+  monto: number
+  nota?: string
+}) {
+  pagos.value.unshift({
+    id: nextPagoId.value++,
+    deId: payload.deId,
+    paraId: payload.paraId,
+    monto: payload.monto,
+    fecha: new Date().toISOString().slice(0, 10),
+    nota: payload.nota,
+  })
+  mostrarToast(
+    `Pago registrado: ${nombreCompanero(payload.deId)} → ${nombreCompanero(payload.paraId)}`
+  )
+}
+
+function agregarCompanero(nombre: string) {
+  if (companeros.value.some((c) => c.nombre.toLowerCase() === nombre.toLowerCase())) {
+    mostrarToast('Ese compañero ya existe', 'error')
+    return
+  }
+  const id = `c${nextCompaneroId.value++}`
+  companeros.value.push({ id, nombre })
+  mostrarToast(`${nombre} agregado al grupo`)
+}
+
+function solicitarEliminarCompanero(id: string) {
+  const nombre = nombreCompanero(id)
+  const usado = gastos.value.some(
+    (g) => g.pagadoPorId === id || g.divisiones.some((d) => d.companeroId === id)
+  )
+  if (usado) {
+    mostrarToast('No puedes eliminar a alguien con gastos asociados', 'error')
+    return
+  }
+  confirmacion.value = {
+    visible: true,
+    titulo: 'Eliminar compañero',
+    mensaje: `¿Eliminar a ${nombre} del grupo?`,
+    onConfirmar: () => {
+      companeros.value = companeros.value.filter((c) => c.id !== id)
+      mostrarToast(`${nombre} eliminado del grupo`)
+      confirmacion.value.visible = false
+    },
+  }
+}
+
+function limpiarGastos() {
+  confirmacion.value = {
+    visible: true,
+    titulo: 'Limpiar registros',
+    mensaje: '¿Eliminar todos los gastos? Los pagos registrados se mantendrán.',
+    onConfirmar: () => {
+      gastos.value = []
+      mostrarToast('Todos los gastos fueron eliminados')
+      confirmacion.value.visible = false
+    },
+  }
+}
 </script>
 
 <template>
@@ -36,88 +170,144 @@ const limpiarGastos = () => {
     <header class="app-header">
       <div class="header-inner">
         <div class="brand">
-          <UjapLogo :size="44" />
+          <UjapLogo :size="40" />
           <div class="brand-text">
             <span class="brand-ujap">UJAP Split</span>
             <span class="brand-sub">Gastos del Semestre</span>
           </div>
         </div>
         <nav class="header-nav" aria-label="Navegación principal">
-          <span class="nav-item active">Gastos</span>
-          <span class="nav-item">Compañeros</span>
-          <span class="nav-item">Materiales</span>
+          <button
+            v-for="item in navItems"
+            :key="item.id"
+            type="button"
+            class="nav-item"
+            :class="{ active: vistaActiva === item.id }"
+            @click="vistaActiva = item.id"
+          >
+            {{ item.label }}
+          </button>
         </nav>
+        <button
+          v-if="vistaActiva === 'gastos'"
+          type="button"
+          class="btn-add-header"
+          @click="abrirFormulario()"
+        >
+          + Agregar gasto
+        </button>
       </div>
     </header>
 
-    <div class="hero">
-      <div class="hero-content">
-        <div class="hero-badge">
-          <span class="badge-dot"></span>
-          Proyecto Universitario — UJAP
-        </div>
-        <h1>Divide los gastos del semestre</h1>
-        <p>Copias, lápices, videobeam, hojas e impresiones — reparte los gastos del semestre entre tus compañeros de forma justa y transparente.</p>
-      </div>
-      <div class="hero-accent" aria-hidden="true">
-        <UjapLogo :size="100" />
-      </div>
-    </div>
-
     <main class="main-content">
-      <section class="lista-gastos" aria-labelledby="gastos-title">
-        <div class="section-header">
-          <div class="section-title-group">
-            <h2 id="gastos-title">Gastos del grupo</h2>
-            <p class="section-subtitle">Cálculo I — Semestre 2026</p>
+      <!-- Vista Gastos -->
+      <template v-if="vistaActiva === 'gastos'">
+        <section class="lista-gastos" aria-labelledby="gastos-title">
+          <div class="section-header">
+            <div class="section-title-group">
+              <h1 id="gastos-title">Gastos del grupo</h1>
+              <p class="section-subtitle">Cálculo I — Semestre 2026</p>
+            </div>
+            <span class="badge-count">{{ gastos.length }}</span>
           </div>
-          <span class="badge-count">{{ gastos.length }}</span>
-        </div>
 
-        <div v-if="gastos.length === 0" class="empty-state">
-          <div class="empty-illustration">
-            <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-              <circle cx="32" cy="32" r="30" stroke="var(--color-border)" stroke-width="2" stroke-dasharray="6 4"/>
-              <path d="M32 20v24M24 32h16" stroke="var(--color-primary)" stroke-width="3" stroke-linecap="round"/>
-            </svg>
+          <div v-if="gastos.length === 0" class="empty-state">
+            <div class="empty-illustration">📋</div>
+            <h3>Sin gastos registrados</h3>
+            <p>Agrega copias, lápices, videobeam u otros materiales universitarios.</p>
+            <button type="button" class="btn-cta" @click="abrirFormulario()">
+              + Agregar primer gasto
+            </button>
           </div>
-          <h3>¡Sin gastos pendientes!</h3>
-          <p>No hay gastos registrados. Cuando alguien pague copias, lápices, videobeam u otro material universitario, aparecerá aquí.</p>
-        </div>
 
-        <div v-else class="cards-container">
-          <GastoCard
-            v-for="gasto in gastos"
-            :key="gasto.id"
-            :gasto="gasto"
-            @eliminar="manejarEliminar"
-            @seleccionar="manejarSeleccionar"
+          <div v-else class="cards-container">
+            <GastoCard
+              v-for="gasto in gastosOrdenados"
+              :key="gasto.id"
+              :gasto="gasto"
+              :companeros="companeros"
+              @editar="editarGasto"
+              @eliminar="solicitarEliminarGasto"
+            />
+          </div>
+
+          <button
+            v-if="gastos.length > 0"
+            type="button"
+            class="btn-clear-list"
+            @click="limpiarGastos"
+          >
+            Limpiar todos los gastos
+          </button>
+        </section>
+
+        <aside class="sidebar">
+          <ResumenGastos
+            :gastos="gastos"
+            :pagos="pagos"
+            :companeros="companeros"
+            @registrar-pago="registrarPago"
           />
-        </div>
-      </section>
+        </aside>
+      </template>
 
-      <aside class="sidebar">
-        <ResumenGastos
-          :gastos="gastos"
-          @limpiar-gastos="limpiarGastos"
+      <!-- Vista Compañeros -->
+      <div v-else-if="vistaActiva === 'companeros'" class="vista-full">
+        <VistaCompaneros
+          v-model:nombre-nuevo="nombreNuevoCompanero"
+          :companeros="companeros"
+          @agregar="agregarCompanero"
+          @eliminar="solicitarEliminarCompanero"
         />
-      </aside>
+      </div>
+
+      <!-- Vista Materiales -->
+      <div v-else-if="vistaActiva === 'materiales'" class="vista-full">
+        <VistaMateriales :gastos="gastos" :companeros="companeros" />
+      </div>
     </main>
+
+    <button
+      v-if="vistaActiva === 'gastos'"
+      type="button"
+      class="fab"
+      aria-label="Agregar gasto"
+      @click="abrirFormulario()"
+    >
+      +
+    </button>
 
     <footer class="app-footer">
       <div class="footer-inner">
-        <div class="footer-brand">
-          <UjapLogo :size="32" />
-          <div>
-            <strong>Universidad José Antonio Páez</strong>
-            <span>Anima Mens et Vigor</span>
-          </div>
-        </div>
+        <UjapLogo :size="28" />
         <p class="footer-copy">
-          Proyecto académico · Ingeniería de Software · {{ new Date().getFullYear() }}
+          UJAP · Proyecto académico · Ingeniería de Software · {{ new Date().getFullYear() }}
         </p>
       </div>
     </footer>
+
+    <FormularioGasto
+      :visible="formularioVisible"
+      :companeros="companeros"
+      :gasto-editar="gastoEditando"
+      @cerrar="cerrarFormulario"
+      @guardar="guardarGasto"
+    />
+
+    <ModalConfirmacion
+      :visible="confirmacion.visible"
+      :titulo="confirmacion.titulo"
+      :mensaje="confirmacion.mensaje"
+      confirmar-texto="Eliminar"
+      @confirmar="confirmacion.onConfirmar()"
+      @cancelar="confirmacion.visible = false"
+    />
+
+    <ToastNotificacion
+      :visible="toast.visible"
+      :mensaje="toast.mensaje"
+      :tipo="toast.tipo"
+    />
   </div>
 </template>
 
@@ -126,9 +316,9 @@ const limpiarGastos = () => {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  padding-bottom: 4rem;
 }
 
-/* Header */
 .app-header {
   background: var(--color-bg-card);
   border-bottom: 3px solid var(--ujap-red);
@@ -148,17 +338,18 @@ const limpiarGastos = () => {
 .header-inner {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 0.875rem 1.5rem;
+  padding: 0.75rem 1.5rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.5rem;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
 }
 
 .brand-text {
@@ -169,7 +360,7 @@ const limpiarGastos = () => {
 
 .brand-ujap {
   font-family: var(--font-serif);
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--ujap-red);
   letter-spacing: 0.04em;
@@ -177,7 +368,7 @@ const limpiarGastos = () => {
 }
 
 .brand-sub {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 600;
   color: var(--ujap-blue);
   text-transform: uppercase;
@@ -190,13 +381,16 @@ const limpiarGastos = () => {
 }
 
 .nav-item {
-  padding: 0.5rem 1rem;
+  padding: 0.45rem 0.85rem;
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--color-text-muted);
   border-radius: var(--radius-sm);
-  cursor: default;
+  cursor: pointer;
   transition: background var(--transition), color var(--transition);
+  border: none;
+  background: transparent;
+  font-family: inherit;
 }
 
 .nav-item.active {
@@ -204,77 +398,32 @@ const limpiarGastos = () => {
   color: var(--ujap-blue);
 }
 
-/* Hero */
-.hero {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 2.5rem 1.5rem 2rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 2rem;
-  position: relative;
-}
-
-.hero-content {
-  flex: 1;
-}
-
-.hero-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
+.btn-add-header {
+  padding: 0.5rem 1rem;
+  background: var(--ujap-blue);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
   font-weight: 600;
-  color: var(--ujap-red);
-  background: rgba(210, 35, 42, 0.07);
-  padding: 0.35rem 0.85rem;
-  border-radius: var(--radius-full);
-  margin-bottom: 1rem;
-  border: 1px solid rgba(210, 35, 42, 0.15);
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
 }
 
-.badge-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ujap-gold);
-}
-
-.hero h1 {
-  margin: 0 0 0.75rem;
-  font-size: clamp(1.75rem, 4vw, 2.25rem);
-  font-weight: 800;
-  color: var(--color-heading);
-  letter-spacing: -0.03em;
-  line-height: 1.15;
-}
-
-.hero p {
-  margin: 0;
-  font-size: 1.05rem;
-  color: var(--color-text-muted);
-  max-width: 520px;
-  line-height: 1.6;
-}
-
-.hero-accent {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  filter: drop-shadow(0 4px 12px rgba(46, 88, 166, 0.15));
-}
-
-/* Main */
 .main-content {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 0 1.5rem 3rem;
+  padding: 1.25rem 1.5rem 2rem;
   display: flex;
   gap: 2rem;
   align-items: flex-start;
   flex: 1;
+  width: 100%;
+}
+
+.vista-full {
+  flex: 1;
+  width: 100%;
 }
 
 .lista-gastos {
@@ -289,10 +438,10 @@ const limpiarGastos = () => {
   margin-bottom: 1.25rem;
 }
 
-.section-title-group h2 {
+.section-title-group h1 {
   margin: 0 0 0.25rem;
-  font-size: 1.25rem;
-  font-weight: 700;
+  font-size: 1.35rem;
+  font-weight: 800;
   color: var(--color-heading);
 }
 
@@ -319,27 +468,37 @@ const limpiarGastos = () => {
 .empty-state {
   background: var(--color-bg-card);
   border-radius: var(--radius-lg);
-  padding: 3.5rem 2rem;
+  padding: 2.5rem 2rem;
   text-align: center;
   border: 2px dashed var(--color-border);
 }
 
 .empty-illustration {
-  margin-bottom: 1.25rem;
-  opacity: 0.7;
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
 }
 
 .empty-state h3 {
   margin: 0 0 0.5rem;
-  font-size: 1.15rem;
-  font-weight: 700;
+  font-size: 1.1rem;
   color: var(--color-heading);
 }
 
 .empty-state p {
-  margin: 0;
+  margin: 0 0 1.25rem;
   color: var(--color-text-muted);
   font-size: 0.9rem;
+}
+
+.btn-cta {
+  padding: 0.75rem 1.5rem;
+  background: var(--ujap-blue);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .cards-container {
@@ -348,19 +507,51 @@ const limpiarGastos = () => {
   gap: 0.75rem;
 }
 
+.btn-clear-list {
+  margin-top: 1rem;
+  width: 100%;
+  padding: 0.65rem;
+  background: transparent;
+  border: 1.5px solid var(--color-danger);
+  color: var(--color-danger);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
 .sidebar {
   flex: 1;
   min-width: 280px;
   position: sticky;
-  top: 5rem;
+  top: 4.5rem;
 }
 
-/* Footer */
+.fab {
+  display: none;
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-full);
+  background: var(--ujap-blue);
+  color: white;
+  border: none;
+  font-size: 1.75rem;
+  font-weight: 300;
+  cursor: pointer;
+  box-shadow: var(--shadow-lg);
+  z-index: 50;
+  line-height: 1;
+}
+
 .app-footer {
   margin-top: auto;
   background: var(--ujap-blue-dark);
-  color: rgba(255, 255, 255, 0.85);
-  padding: 1.75rem 1.5rem;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 1rem 1.5rem;
 }
 
 .footer-inner {
@@ -368,51 +559,28 @@ const limpiarGastos = () => {
   margin: 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.footer-brand {
-  display: flex;
-  align-items: center;
   gap: 0.75rem;
-}
-
-.footer-brand strong {
-  display: block;
-  font-size: 0.9rem;
-  color: white;
-}
-
-.footer-brand span {
-  font-size: 0.75rem;
-  color: var(--ujap-gold-light);
-  font-style: italic;
 }
 
 .footer-copy {
   margin: 0;
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.5);
 }
 
 @media (max-width: 768px) {
-  .header-nav {
+  .btn-add-header {
     display: none;
   }
 
-  .hero {
-    padding: 1.5rem;
-  }
-
-  .hero-accent {
-    display: none;
+  .fab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .main-content {
     flex-direction: column;
-    padding: 0 1rem 2rem;
+    padding: 1rem;
   }
 
   .sidebar {
@@ -420,9 +588,10 @@ const limpiarGastos = () => {
     position: static;
   }
 
-  .footer-inner {
-    flex-direction: column;
-    text-align: center;
+  .header-nav {
+    order: 3;
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>
