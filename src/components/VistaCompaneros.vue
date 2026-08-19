@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { Companero } from '../types'
 import { getAvatarColor, getInitials } from '../utils/avatars'
+import { validarNombreCompanero } from '../utils/validaciones'
 
 defineProps<{
   companeros: Companero[]
@@ -12,11 +14,16 @@ const emit = defineEmits<{
 }>()
 
 const nombreNuevo = defineModel<string>('nombreNuevo', { default: '' })
+const errorNombre = ref('')
 
 function agregar() {
-  const nombre = nombreNuevo.value.trim()
-  if (!nombre) return
-  emit('agregar', nombre)
+  errorNombre.value = ''
+  const err = validarNombreCompanero(nombreNuevo.value)
+  if (err) {
+    errorNombre.value = err
+    return
+  }
+  emit('agregar', nombreNuevo.value.trim())
   nombreNuevo.value = ''
 }
 </script>
@@ -37,6 +44,7 @@ function agregar() {
       />
       <button type="submit" class="btn-add">Agregar</button>
     </form>
+    <p v-if="errorNombre" class="error-nombre">{{ errorNombre }}</p>
 
     <ul v-if="companeros.length" class="lista">
       <li v-for="c in companeros" :key="c.id" class="item">
@@ -109,6 +117,12 @@ function agregar() {
   border-radius: var(--radius-sm);
   font-weight: 600;
   cursor: pointer;
+}
+
+.error-nombre {
+  margin: -0.5rem 0 1rem;
+  color: var(--ujap-red);
+  font-size: 0.85rem;
 }
 
 .lista {

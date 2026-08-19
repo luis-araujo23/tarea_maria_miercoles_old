@@ -74,10 +74,32 @@ function crearGastosIniciales(): Gasto[] {
   ]
 }
 
+function migrarPago(raw: Record<string, unknown>, companeros: Companero[]): Pago | null {
+  if (typeof raw.id !== 'number') return null
+  if (typeof raw.deId !== 'string' || typeof raw.paraId !== 'string') return null
+  if (typeof raw.monto !== 'number' || raw.monto <= 0) return null
+  if (raw.deId === raw.paraId) return null
+  if (!companeros.some((c) => c.id === raw.deId)) return null
+  if (!companeros.some((c) => c.id === raw.paraId)) return null
+
+  const fecha = typeof raw.fecha === 'string' ? raw.fecha : new Date().toISOString().slice(0, 10)
+  const nota = typeof raw.nota === 'string' ? raw.nota : undefined
+
+  return {
+    id: raw.id,
+    deId: raw.deId,
+    paraId: raw.paraId,
+    monto: raw.monto,
+    fecha,
+    nota,
+  }
+}
+
 function migrarGasto(raw: Record<string, unknown>, companeros: Companero[]): Gasto | null {
   if (typeof raw.id !== 'number' || typeof raw.descripcion !== 'string') return null
 
-  const monto = typeof raw.monto === 'number' ? raw.monto : 0
+  const monto = typeof raw.monto === 'number' ? raw.monto : NaN
+  if (Number.isNaN(monto) || monto <= 0) return null
   let pagadoPorId = typeof raw.pagadoPorId === 'string' ? raw.pagadoPorId : ''
 
   if (!pagadoPorId && typeof raw.pagadoPor === 'string') {
@@ -113,10 +135,16 @@ function cargarEstado(): AppState {
           .map((g) => migrarGasto(g, companeros))
           .filter((g): g is Gasto => g !== null)
 
+        const pagos = Array.isArray(parsed.pagos)
+          ? (parsed.pagos as Record<string, unknown>[])
+              .map((p) => migrarPago(p, companeros))
+              .filter((p): p is Pago => p !== null)
+          : []
+
         return {
           companeros,
           gastos,
-          pagos: (parsed.pagos as Pago[]) ?? [],
+          pagos,
         }
       }
     }

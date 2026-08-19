@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { Companero, Gasto, Pago } from '../types'
 import { getAvatarColor, getInitials } from '../utils/avatars'
 import { calcularBalances, simplificarDeudas } from '../utils/balances'
+import { obtenerDeudaEntre, validarPago } from '../utils/validaciones'
 
 const props = defineProps<{
   gastos: Gasto[]
@@ -47,6 +48,11 @@ function formatearFecha(fecha: string): string {
 }
 
 function abrirFormPago(de?: string, para?: string, monto?: number) {
+  if (props.companeros.length < 2) {
+    errorPago.value = 'Se necesitan al menos 2 compañeros para registrar un pago'
+    mostrarFormPago.value = true
+    return
+  }
   deId.value = de ?? props.companeros[0]?.id ?? ''
   paraId.value = para ?? props.companeros[1]?.id ?? ''
   montoPago.value = monto ?? ''
@@ -55,25 +61,30 @@ function abrirFormPago(de?: string, para?: string, monto?: number) {
   mostrarFormPago.value = true
 }
 
+const deudaActual = computed(() =>
+  obtenerDeudaEntre(deId.value, paraId.value, deudasSimplificadas.value)
+)
+
 function registrarPago() {
   errorPago.value = ''
-  if (!deId.value || !paraId.value) {
-    errorPago.value = 'Selecciona quién paga y quién recibe'
-    return
-  }
-  if (deId.value === paraId.value) {
-    errorPago.value = 'El pagador y receptor deben ser distintos'
-    return
-  }
-  if (typeof montoPago.value !== 'number' || montoPago.value <= 0) {
-    errorPago.value = 'Ingresa un monto válido'
+  const monto = montoPago.value
+
+  const err = validarPago(
+    deId.value,
+    paraId.value,
+    typeof monto === 'number' ? monto : NaN,
+    props.companeros,
+    deudasSimplificadas.value
+  )
+  if (err) {
+    errorPago.value = err
     return
   }
 
   emit('registrar-pago', {
     deId: deId.value,
     paraId: paraId.value,
-    monto: montoPago.value,
+    monto: monto as number,
     nota: notaPago.value.trim() || undefined,
   })
   mostrarFormPago.value = false
@@ -149,12 +160,18 @@ function registrarPago() {
       <span>✓</span> ¡Todos están a mano!
     </div>
 
-    <div class="settle-section">
-      <button type="button" class="btn-settle-main" @click="abrirFormPago()">
+    <div v-if="gastos.length > 0" class="settle-section">
+      <button
+        type="button"
+        class="btn-settle-main"
+        :disabled="deudasSimplificadas.length === 0 || companeros.length < 2"
+        @click="abrirFormPago()"
+      >
         Registrar pago
       </button>
 
       <form v-if="mostrarFormPago" class="pago-form" @submit.prevent="registrarPago">
+        <template v-if="companeros.length >= 2">
         <div class="field">
           <label>Quién paga</label>
           <select v-model="deId">
@@ -169,18 +186,35 @@ function registrarPago() {
         </div>
         <div class="field">
           <label>Monto ($)</label>
-          <input v-model.number="montoPago" type="number" min="0.01" step="0.01" />
+          <input
+            v-model.number="montoPago"
+            type="number"
+            min="0.01"
+            :max="deudaActual > 0 ? deudaActual : undefined"
+            step="0.01"
+          />
+          <span v-if="deudaActual > 0" class="deuda-hint">
+            Deuda pendiente: ${{ deudaActual.toFixed(2) }}
+          </span>
         </div>
         <div class="field">
           <label>Nota (opcional)</label>
           <input v-model="notaPago" type="text" placeholder="Ej: Transferencia" />
         </div>
+        </template>
         <p v-if="errorPago" class="error">{{ errorPago }}</p>
         <div class="form-actions">
           <button type="button" class="btn-cancel" @click="mostrarFormPago = false">
             Cancelar
           </button>
-          <button type="submit" class="btn-save">Confirmar pago</button>
+          <button
+            v-if="companeros.length >= 2"
+            type="submit"
+            class="btn-save"
+            :disabled="deudaActual <= 0"
+          >
+            Confirmar pago
+          </button>
         </div>
       </form>
     </div>
@@ -413,6 +447,23 @@ function registrarPago() {
   font-weight: 600;
   font-size: 0.875rem;
   cursor: pointer;
+}
+
+.btn-settle-main:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deuda-hint {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--ujap-blue);
+}
+
+.btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .pago-form {

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { Companero, Gasto, TipoDivision } from '../types'
-import { divisionIgual, validarDivision } from '../utils/balances'
+import { divisionIgual } from '../utils/balances'
+import { validarGasto } from '../utils/validaciones'
 
 const props = defineProps<{
   visible: boolean
@@ -72,7 +73,18 @@ watch(tipoDivision, (tipo) => {
   })
 })
 
+watch(pagadoPorId, (id) => {
+  if (id && !participantesSeleccionados.value.includes(id)) {
+    participantesSeleccionados.value.push(id)
+  }
+})
+
 function toggleParticipante(id: string) {
+  if (id === pagadoPorId.value) {
+    error.value = 'El pagador debe permanecer entre los participantes'
+    return
+  }
+  error.value = ''
   const idx = participantesSeleccionados.value.indexOf(id)
   if (idx >= 0) {
     participantesSeleccionados.value.splice(idx, 1)
@@ -91,22 +103,6 @@ function toggleParticipante(id: string) {
 
 function guardar() {
   error.value = ''
-  if (!descripcion.value.trim()) {
-    error.value = 'Ingresa una descripción'
-    return
-  }
-  if (typeof monto.value !== 'number' || monto.value <= 0) {
-    error.value = 'Ingresa un monto válido'
-    return
-  }
-  if (!pagadoPorId.value) {
-    error.value = 'Selecciona quién pagó'
-    return
-  }
-  if (!fecha.value) {
-    error.value = 'Selecciona una fecha'
-    return
-  }
 
   const divisiones =
     tipoDivision.value === 'igual'
@@ -116,20 +112,22 @@ function guardar() {
           valor: valoresDivision.value[companeroId] ?? 0,
         }))
 
-  const errDiv = validarDivision(monto.value, tipoDivision.value, divisiones)
-  if (errDiv) {
-    error.value = errDiv
-    return
-  }
-
-  emit('guardar', {
+  const payload = {
     descripcion: descripcion.value.trim(),
-    monto: monto.value,
+    monto: monto.value as number,
     pagadoPorId: pagadoPorId.value,
     fecha: fecha.value,
     tipoDivision: tipoDivision.value,
     divisiones,
-  })
+  }
+
+  const err = validarGasto(payload, props.companeros)
+  if (err) {
+    error.value = err
+    return
+  }
+
+  emit('guardar', payload)
 }
 </script>
 
@@ -145,6 +143,14 @@ function guardar() {
             </button>
           </div>
 
+          <div v-if="companeros.length === 0" class="sin-companeros">
+            <p>Agrega compañeros al grupo antes de registrar un gasto.</p>
+            <button type="button" class="btn-cancel" @click="emit('cerrar')">
+              Cerrar
+            </button>
+          </div>
+
+          <template v-else>
           <div class="field">
             <label for="descripcion">Descripción</label>
             <input
@@ -247,6 +253,7 @@ function guardar() {
               {{ esEdicion ? 'Guardar cambios' : 'Agregar gasto' }}
             </button>
           </div>
+          </template>
         </form>
       </div>
     </Transition>
@@ -368,6 +375,19 @@ function guardar() {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
+}
+
+.sin-companeros {
+  padding: 1rem;
+  background: var(--color-bg-muted);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.sin-companeros p {
+  margin: 0 0 1rem;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
 }
 
 .error {

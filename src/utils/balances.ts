@@ -146,6 +146,12 @@ export function validarDivision(
 ): string | null {
   if (divisiones.length === 0) return 'Selecciona al menos un participante'
 
+  for (const division of divisiones) {
+    if (Number.isNaN(division.valor) || division.valor < 0) {
+      return 'Los valores de la división no pueden ser negativos'
+    }
+  }
+
   if (tipo === 'porcentaje') {
     const total = divisiones.reduce((acc, d) => acc + d.valor, 0)
     if (Math.abs(total - 100) > 0.01) {

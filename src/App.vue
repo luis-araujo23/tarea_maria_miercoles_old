@@ -10,6 +10,7 @@ import VistaCompaneros from './components/VistaCompaneros.vue'
 import VistaMateriales from './components/VistaMateriales.vue'
 import ToastNotificacion from './components/ToastNotificacion.vue'
 import ModalConfirmacion from './components/ModalConfirmacion.vue'
+import { validarGasto, validarNombreCompanero } from './utils/validaciones'
 
 const {
   companeros,
@@ -33,8 +34,11 @@ const confirmacion = ref({
   visible: false,
   titulo: '',
   mensaje: '',
+  confirmarTexto: 'Confirmar',
   onConfirmar: () => {},
 })
+
+const puedeAgregarGastos = computed(() => companeros.value.length > 0)
 
 const gastosOrdenados = computed(() =>
   [...gastos.value].sort(
@@ -57,6 +61,10 @@ function mostrarToast(mensaje: string, tipo: 'success' | 'error' | 'info' = 'suc
 }
 
 function abrirFormulario(gasto?: Gasto) {
+  if (!puedeAgregarGastos.value) {
+    mostrarToast('Agrega al menos un compañero antes de registrar gastos', 'error')
+    return
+  }
   gastoEditando.value = gasto ?? null
   formularioVisible.value = true
 }
@@ -69,6 +77,12 @@ function cerrarFormulario() {
 type GastoPayload = Omit<Gasto, 'id'>
 
 function guardarGasto(payload: GastoPayload) {
+  const err = validarGasto(payload, companeros.value)
+  if (err) {
+    mostrarToast(err, 'error')
+    return
+  }
+
   if (gastoEditando.value) {
     const idx = gastos.value.findIndex((g) => g.id === gastoEditando.value!.id)
     if (idx >= 0) {
@@ -88,6 +102,7 @@ function solicitarEliminarGasto(id: number) {
     visible: true,
     titulo: 'Eliminar gasto',
     mensaje: `¿Eliminar "${gasto?.descripcion ?? 'este gasto'}"? Esta acción no se puede deshacer.`,
+    confirmarTexto: 'Eliminar',
     onConfirmar: () => {
       gastos.value = gastos.value.filter((g) => g.id !== id)
       mostrarToast('Gasto eliminado')
@@ -121,28 +136,47 @@ function registrarPago(payload: {
 }
 
 function agregarCompanero(nombre: string) {
+  const err = validarNombreCompanero(nombre)
+  if (err) {
+    mostrarToast(err, 'error')
+    return
+  }
   if (companeros.value.some((c) => c.nombre.toLowerCase() === nombre.toLowerCase())) {
     mostrarToast('Ese compañero ya existe', 'error')
     return
   }
   const id = `c${nextCompaneroId.value++}`
-  companeros.value.push({ id, nombre })
-  mostrarToast(`${nombre} agregado al grupo`)
+  companeros.value.push({ id, nombre: nombre.trim() })
+  mostrarToast(`${nombre.trim()} agregado al grupo`)
 }
 
 function solicitarEliminarCompanero(id: string) {
   const nombre = nombreCompanero(id)
-  const usado = gastos.value.some(
+
+  if (companeros.value.length <= 1) {
+    mostrarToast('Debe quedar al menos un compañero en el grupo', 'error')
+    return
+  }
+
+  const usadoEnGastos = gastos.value.some(
     (g) => g.pagadoPorId === id || g.divisiones.some((d) => d.companeroId === id)
   )
-  if (usado) {
+  const usadoEnPagos = pagos.value.some((p) => p.deId === id || p.paraId === id)
+
+  if (usadoEnGastos) {
     mostrarToast('No puedes eliminar a alguien con gastos asociados', 'error')
     return
   }
+  if (usadoEnPagos) {
+    mostrarToast('No puedes eliminar a alguien con pagos registrados', 'error')
+    return
+  }
+
   confirmacion.value = {
     visible: true,
     titulo: 'Eliminar compañero',
     mensaje: `¿Eliminar a ${nombre} del grupo?`,
+    confirmarTexto: 'Eliminar',
     onConfirmar: () => {
       companeros.value = companeros.value.filter((c) => c.id !== id)
       mostrarToast(`${nombre} eliminado del grupo`)
@@ -156,6 +190,7 @@ function limpiarGastos() {
     visible: true,
     titulo: 'Limpiar registros',
     mensaje: '¿Eliminar todos los gastos? Los pagos registrados se mantendrán.',
+    confirmarTexto: 'Limpiar todo',
     onConfirmar: () => {
       gastos.value = []
       mostrarToast('Todos los gastos fueron eliminados')
@@ -192,6 +227,7 @@ function limpiarGastos() {
           v-if="vistaActiva === 'gastos'"
           type="button"
           class="btn-add-header"
+          :disabled="!puedeAgregarGastos"
           @click="abrirFormulario()"
         >
           + Agregar gasto
@@ -215,7 +251,12 @@ function limpiarGastos() {
             <div class="empty-illustration">📋</div>
             <h3>Sin gastos registrados</h3>
             <p>Agrega copias, lápices, videobeam u otros materiales universitarios.</p>
-            <button type="button" class="btn-cta" @click="abrirFormulario()">
+            <button
+              type="button"
+              class="btn-cta"
+              :disabled="!puedeAgregarGastos"
+              @click="abrirFormulario()"
+            >
               + Agregar primer gasto
             </button>
           </div>
@@ -268,7 +309,7 @@ function limpiarGastos() {
     </main>
 
     <button
-      v-if="vistaActiva === 'gastos'"
+      v-if="vistaActiva === 'gastos' && puedeAgregarGastos"
       type="button"
       class="fab"
       aria-label="Agregar gasto"
@@ -298,7 +339,7 @@ function limpiarGastos() {
       :visible="confirmacion.visible"
       :titulo="confirmacion.titulo"
       :mensaje="confirmacion.mensaje"
-      confirmar-texto="Eliminar"
+      :confirmar-texto="confirmacion.confirmarTexto"
       @confirmar="confirmacion.onConfirmar()"
       @cancelar="confirmacion.visible = false"
     />
@@ -408,6 +449,12 @@ function limpiarGastos() {
   font-size: 0.85rem;
   cursor: pointer;
   font-family: inherit;
+}
+
+.btn-add-header:disabled,
+.btn-cta:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .main-content {
