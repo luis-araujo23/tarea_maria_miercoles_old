@@ -90,7 +90,6 @@ function handleSubmit() {
   min-height: 100vh;
   display: grid;
   grid-template-rows: 1fr auto;
-  padding: 2rem 1rem;
 }
 
 .auth-card {

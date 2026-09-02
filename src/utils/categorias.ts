@@ -1,11 +1,6 @@
-export interface CategoriaMaterial {
-  id: string
-  nombre: string
-  icono: string
-  keywords: string[]
-}
+import type { CategoriaMaterial } from '../types'
 
-export const CATEGORIAS: CategoriaMaterial[] = [
+export const CATEGORIAS_DEFAULT: CategoriaMaterial[] = [
   { id: 'copias', nombre: 'Copias e impresiones', icono: '🖨️', keywords: ['copia', 'impres', 'xerox'] },
   { id: 'papel', nombre: 'Hojas y papel', icono: '📄', keywords: ['hoja', 'resma', 'papel'] },
   { id: 'escritura', nombre: 'Lápices y bolígrafos', icono: '✏️', keywords: ['lapic', 'bolígrafo', 'marcador'] },
@@ -16,20 +11,20 @@ export const CATEGORIAS: CategoriaMaterial[] = [
   { id: 'otros', nombre: 'Otros materiales', icono: '📎', keywords: [] },
 ]
 
-export function getCategoriaId(descripcion: string): string {
+export function getCategoriaId(descripcion: string, categorias: CategoriaMaterial[]): string {
   const desc = descripcion.toLowerCase()
-  const match = CATEGORIAS.find((cat) =>
+  const match = categorias.find((cat) =>
     cat.keywords.some((keyword) => desc.includes(keyword))
   )
   return match?.id ?? 'otros'
 }
 
-export function getCategoryIcon(descripcion: string): string {
-  const id = getCategoriaId(descripcion)
-  return CATEGORIAS.find((c) => c.id === id)?.icono ?? '📎'
+export function getCategoryIcon(descripcion: string, categorias: CategoriaMaterial[]): string {
+  const id = getCategoriaId(descripcion, categorias)
+  return categorias.find((c) => c.id === id)?.icono ?? '📎'
 }
 
-export function getCategoriaNombre(descripcion: string): string {
-  const id = getCategoriaId(descripcion)
-  return CATEGORIAS.find((c) => c.id === id)?.nombre ?? 'Otros materiales'
+export function getCategoriaNombre(descripcion: string, categorias: CategoriaMaterial[]): string {
+  const id = getCategoriaId(descripcion, categorias)
+  return categorias.find((c) => c.id === id)?.nombre ?? 'Otros materiales'
 }

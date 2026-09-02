@@ -4,6 +4,9 @@ import type { Companero, Gasto } from '../types'
 import { getAvatarColor, getInitials } from '../utils/avatars'
 import { etiquetaDivision } from '../utils/balances'
 import { getCategoryIcon } from '../utils/categorias'
+import { useAppStore } from '../composables/useAppStore'
+
+const { categorias } = useAppStore()
 
 const props = defineProps<{
   gasto: Gasto
@@ -30,7 +33,7 @@ const divisionTexto = computed(() =>
   <article class="gasto-card">
     <div class="gasto-left">
       <div class="category-icon" aria-hidden="true">
-        {{ getCategoryIcon(gasto.descripcion) }}
+        {{ getCategoryIcon(gasto.descripcion, categorias) }}
       </div>
       <div class="gasto-details">
         <h3 class="gasto-title">{{ gasto.descripcion }}</h3>

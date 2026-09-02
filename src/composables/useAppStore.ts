@@ -1,6 +1,7 @@
 import { ref, watch } from 'vue'
-import type { AppState, Companero, Gasto, Pago } from '../types'
+import type { AppState, Companero, Gasto, Pago, CategoriaMaterial } from '../types'
 import { divisionIgual } from '../utils/balances'
+import { CATEGORIAS_DEFAULT } from '../utils/categorias'
 
 const STORAGE_KEY = 'ujap-split-state'
 
@@ -124,6 +125,18 @@ function migrarGasto(raw: Record<string, unknown>, companeros: Companero[]): Gas
   }
 }
 
+function migrarCategoria(raw: Record<string, unknown>): CategoriaMaterial | null {
+  if (typeof raw.id !== 'string' || typeof raw.nombre !== 'string') return null
+  if (typeof raw.icono !== 'string') return null
+  if (!Array.isArray(raw.keywords)) return null
+  return {
+    id: raw.id,
+    nombre: raw.nombre,
+    icono: raw.icono,
+    keywords: raw.keywords.filter((k): k is string => typeof k === 'string'),
+  }
+}
+
 function cargarEstado(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -141,10 +154,17 @@ function cargarEstado(): AppState {
               .filter((p): p is Pago => p !== null)
           : []
 
+        const categorias = Array.isArray(parsed.categorias)
+          ? (parsed.categorias as Record<string, unknown>[])
+              .map((c) => migrarCategoria(c))
+              .filter((c): c is CategoriaMaterial => c !== null)
+          : CATEGORIAS_DEFAULT
+
         return {
           companeros,
           gastos,
           pagos,
+          categorias,
         }
       }
     }
@@ -156,6 +176,7 @@ function cargarEstado(): AppState {
     companeros: DEFAULT_COMPANEROS,
     gastos: crearGastosIniciales(),
     pagos: [],
+    categorias: CATEGORIAS_DEFAULT,
   }
 }
 
@@ -168,6 +189,7 @@ export function useAppStore() {
   const companeros = ref<Companero[]>(inicial.companeros)
   const gastos = ref<Gasto[]>(inicial.gastos)
   const pagos = ref<Pago[]>(inicial.pagos)
+  const categorias = ref<CategoriaMaterial[]>(inicial.categorias)
   const nextGastoId = ref(
     Math.max(0, ...gastos.value.map((g) => g.id)) + 1
   )
@@ -182,12 +204,13 @@ export function useAppStore() {
   )
 
   watch(
-    [companeros, gastos, pagos],
+    [companeros, gastos, pagos, categorias],
     () => {
       guardarEstado({
         companeros: companeros.value,
         gastos: gastos.value,
         pagos: pagos.value,
+        categorias: categorias.value,
       })
     },
     { deep: true }
@@ -197,13 +220,47 @@ export function useAppStore() {
     return companeros.value.find((c) => c.id === id)?.nombre ?? 'Desconocido'
   }
 
+  function agregarCategoria(cat: Omit<CategoriaMaterial, 'id'>) {
+    const id = cat.nombre
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
+    const existing = categorias.value.find((c) => c.id === id)
+    if (existing) {
+      existing.keywords = [...new Set([...existing.keywords, ...cat.keywords])]
+      existing.nombre = cat.nombre
+      existing.icono = cat.icono
+    } else {
+      categorias.value.push({ id, ...cat })
+    }
+  }
+
+  function editarCategoria(id: string, updates: Partial<Omit<CategoriaMaterial, 'id'>>) {
+    const cat = categorias.value.find((c) => c.id === id)
+    if (cat) {
+      if (updates.nombre !== undefined) cat.nombre = updates.nombre
+      if (updates.icono !== undefined) cat.icono = updates.icono
+      if (updates.keywords !== undefined) cat.keywords = updates.keywords
+    }
+  }
+
+  function eliminarCategoria(id: string) {
+    categorias.value = categorias.value.filter((c) => c.id !== id)
+  }
+
   return {
     companeros,
     gastos,
     pagos,
+    categorias,
     nextGastoId,
     nextPagoId,
     nextCompaneroId,
     nombreCompanero,
+    agregarCategoria,
+    editarCategoria,
+    eliminarCategoria,
   }
 }

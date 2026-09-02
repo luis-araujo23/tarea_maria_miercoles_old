@@ -1,6 +1,6 @@
 export type TipoDivision = 'igual' | 'porcentaje' | 'exacto'
 
-export type VistaApp = 'gastos' | 'companeros' | 'materiales'
+export type VistaApp = 'gastos' | 'companeros' | 'materiales' | 'pagos' | 'balance'
 
 export interface Companero {
   id: string
@@ -44,6 +44,13 @@ export interface BalancePersona {
   balance: number
 }
 
+export interface CategoriaMaterial {
+  id: string
+  nombre: string
+  icono: string
+  keywords: string[]
+}
+
 export interface Usuario {
   nombre: string
   email: string
@@ -53,4 +60,5 @@ export interface AppState {
   companeros: Companero[]
   gastos: Gasto[]
   pagos: Pago[]
+  categorias: CategoriaMaterial[]
 }

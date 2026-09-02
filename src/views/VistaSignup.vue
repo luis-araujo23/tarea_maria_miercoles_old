@@ -122,7 +122,6 @@ function handleSubmit() {
   min-height: 100vh;
   display: grid;
   grid-template-rows: 1fr auto;
-  padding: 2rem 1rem;
 }
 
 .auth-card {
@@ -136,6 +135,8 @@ function handleSubmit() {
   text-align: center;
   align-self: center;
   justify-self: center;
+  margin-bottom: 3rem;
+  margin-top: 3rem;
 }
 
 .auth-brand {
