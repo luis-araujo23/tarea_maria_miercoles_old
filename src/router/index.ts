@@ -47,6 +47,11 @@ const routes = [
         name: 'pagos',
         component: () => import('../views/VistaPagos.vue'),
       },
+      {
+        path: 'app/balance',
+        name: 'balance',
+        component: () => import('../views/VistaBalance.vue'),
+      },
     ],
   },
 ]
