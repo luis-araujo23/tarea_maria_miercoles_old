@@ -44,6 +44,11 @@ export interface BalancePersona {
   balance: number
 }
 
+export interface Usuario {
+  nombre: string
+  email: string
+}
+
 export interface AppState {
   companeros: Companero[]
   gastos: Gasto[]
