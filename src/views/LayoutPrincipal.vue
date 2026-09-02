@@ -34,6 +34,9 @@ function cerrarSesion() {
           <router-link to="/app/materiales" class="nav-item" active-class="active">
             Materiales
           </router-link>
+          <router-link to="/app/pagos" class="nav-item" active-class="active">
+            Pagos
+          </router-link>
         </nav>
         <div class="header-right">
           <span v-if="usuario" class="user-name">{{ usuario.nombre }}</span>

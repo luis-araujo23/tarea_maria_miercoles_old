@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import type { Companero, Gasto, Pago } from '../types'
 import { getAvatarColor, getInitials } from '../utils/avatars'
 import { calcularBalances, simplificarDeudas } from '../utils/balances'
-import { obtenerDeudaEntre, validarPago } from '../utils/validaciones'
 
 const props = defineProps<{
   gastos: Gasto[]
@@ -11,16 +11,7 @@ const props = defineProps<{
   companeros: Companero[]
 }>()
 
-const emit = defineEmits<{
-  'registrar-pago': [payload: { deId: string; paraId: string; monto: number; nota?: string }]
-}>()
-
-const mostrarFormPago = ref(false)
-const deId = ref('')
-const paraId = ref('')
-const montoPago = ref<number | ''>('')
-const notaPago = ref('')
-const errorPago = ref('')
+const router = useRouter()
 
 const total = computed(() =>
   props.gastos.reduce((acc, gasto) => acc + gasto.monto, 0)
@@ -32,62 +23,8 @@ const balances = computed(() =>
 
 const deudasSimplificadas = computed(() => simplificarDeudas(balances.value))
 
-const pagosOrdenados = computed(() =>
-  [...props.pagos].sort(
-    (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
-  )
-)
-
 function nombre(id: string): string {
   return props.companeros.find((c) => c.id === id)?.nombre ?? 'Desconocido'
-}
-
-function formatearFecha(fecha: string): string {
-  const [y, m, d] = fecha.split('-')
-  return `${d}/${m}/${y}`
-}
-
-function abrirFormPago(de?: string, para?: string, monto?: number) {
-  if (props.companeros.length < 2) {
-    errorPago.value = 'Se necesitan al menos 2 compañeros para registrar un pago'
-    mostrarFormPago.value = true
-    return
-  }
-  deId.value = de ?? props.companeros[0]?.id ?? ''
-  paraId.value = para ?? props.companeros[1]?.id ?? ''
-  montoPago.value = monto ?? ''
-  notaPago.value = ''
-  errorPago.value = ''
-  mostrarFormPago.value = true
-}
-
-const deudaActual = computed(() =>
-  obtenerDeudaEntre(deId.value, paraId.value, deudasSimplificadas.value)
-)
-
-function registrarPago() {
-  errorPago.value = ''
-  const monto = montoPago.value
-
-  const err = validarPago(
-    deId.value,
-    paraId.value,
-    typeof monto === 'number' ? monto : NaN,
-    props.companeros,
-    deudasSimplificadas.value
-  )
-  if (err) {
-    errorPago.value = err
-    return
-  }
-
-  emit('registrar-pago', {
-    deId: deId.value,
-    paraId: paraId.value,
-    monto: monto as number,
-    nota: notaPago.value.trim() || undefined,
-  })
-  mostrarFormPago.value = false
 }
 </script>
 
@@ -145,13 +82,6 @@ function registrarPago() {
             <strong>${{ deuda.monto.toFixed(2) }}</strong> a
             <strong>{{ nombre(deuda.paraId) }}</strong>
           </span>
-          <button
-            type="button"
-            class="btn-settle"
-            @click="abrirFormPago(deuda.deId, deuda.paraId, deuda.monto)"
-          >
-            Registrar pago
-          </button>
         </li>
       </ul>
     </div>
@@ -165,73 +95,10 @@ function registrarPago() {
         type="button"
         class="btn-settle-main"
         :disabled="deudasSimplificadas.length === 0 || companeros.length < 2"
-        @click="abrirFormPago()"
+        @click="router.push({ name: 'pagos' })"
       >
-        Registrar pago
+        Ir a Pagos
       </button>
-
-      <form v-if="mostrarFormPago" class="pago-form" @submit.prevent="registrarPago">
-        <template v-if="companeros.length >= 2">
-        <div class="field">
-          <label>Quién paga</label>
-          <select v-model="deId">
-            <option v-for="c in companeros" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Quién recibe</label>
-          <select v-model="paraId">
-            <option v-for="c in companeros" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Monto ($)</label>
-          <input
-            v-model.number="montoPago"
-            type="number"
-            min="0.01"
-            :max="deudaActual > 0 ? deudaActual : undefined"
-            step="0.01"
-          />
-          <span v-if="deudaActual > 0" class="deuda-hint">
-            Deuda pendiente: ${{ deudaActual.toFixed(2) }}
-          </span>
-        </div>
-        <div class="field">
-          <label>Nota (opcional)</label>
-          <input v-model="notaPago" type="text" placeholder="Ej: Transferencia" />
-        </div>
-        </template>
-        <p v-if="errorPago" class="error">{{ errorPago }}</p>
-        <div class="form-actions">
-          <button type="button" class="btn-cancel" @click="mostrarFormPago = false">
-            Cancelar
-          </button>
-          <button
-            v-if="companeros.length >= 2"
-            type="submit"
-            class="btn-save"
-            :disabled="deudaActual <= 0"
-          >
-            Confirmar pago
-          </button>
-        </div>
-      </form>
-    </div>
-
-    <div v-if="pagosOrdenados.length > 0" class="historial">
-      <h3 class="section-title">Historial de pagos</h3>
-      <ul class="historial-list">
-        <li v-for="pago in pagosOrdenados" :key="pago.id" class="historial-item">
-          <div>
-            <span class="historial-text">
-              {{ nombre(pago.deId) }} pagó ${{ pago.monto.toFixed(2) }} a {{ nombre(pago.paraId) }}
-            </span>
-            <span v-if="pago.nota" class="historial-nota">{{ pago.nota }}</span>
-          </div>
-          <span class="historial-fecha">{{ formatearFecha(pago.fecha) }}</span>
-        </li>
-      </ul>
     </div>
 
     <div v-if="gastos.length === 0" class="empty-balance">
@@ -311,8 +178,7 @@ function registrarPago() {
 
 .balances,
 .deudas,
-.settle-section,
-.historial {
+.settle-section {
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--color-border-light);
 }
@@ -327,8 +193,7 @@ function registrarPago() {
 }
 
 .balance-list,
-.deuda-list,
-.historial-list {
+.deuda-list {
   list-style: none;
   display: flex;
   flex-direction: column;
@@ -336,8 +201,7 @@ function registrarPago() {
 }
 
 .balance-item,
-.deuda-item,
-.historial-item {
+.deuda-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -404,28 +268,10 @@ function registrarPago() {
   text-align: center;
 }
 
-.deuda-item {
-  flex-direction: column;
-  align-items: stretch;
-}
-
 .deuda-text {
   font-size: 0.875rem;
   color: var(--color-text);
   line-height: 1.4;
-}
-
-.btn-settle {
-  align-self: flex-start;
-  margin-top: 0.5rem;
-  padding: 0.4rem 0.75rem;
-  background: var(--ujap-gold);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
 }
 
 .settled {
@@ -447,110 +293,12 @@ function registrarPago() {
   font-weight: 600;
   font-size: 0.875rem;
   cursor: pointer;
+  font-family: inherit;
 }
 
 .btn-settle-main:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.deuda-hint {
-  display: block;
-  margin-top: 0.25rem;
-  font-size: 0.75rem;
-  color: var(--ujap-blue);
-}
-
-.btn-save:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.pago-form {
-  margin-top: 1rem;
-  padding: 1rem;
-  background: var(--color-bg-muted);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-light);
-}
-
-.field {
-  margin-bottom: 0.75rem;
-}
-
-.field label {
-  display: block;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  margin-bottom: 0.25rem;
-}
-
-.field input,
-.field select {
-  width: 100%;
-  padding: 0.5rem 0.65rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: 0.875rem;
-}
-
-.error {
-  color: var(--ujap-red);
-  font-size: 0.8rem;
-  margin: 0 0 0.5rem;
-}
-
-.form-actions {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-}
-
-.btn-cancel,
-.btn-save {
-  padding: 0.5rem 0.85rem;
-  border-radius: var(--radius-sm);
-  font-weight: 600;
-  font-size: 0.8rem;
-  cursor: pointer;
-  border: none;
-}
-
-.btn-cancel {
-  background: white;
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-}
-
-.btn-save {
-  background: var(--ujap-blue);
-  color: white;
-}
-
-.historial-item {
-  flex-direction: column;
-  align-items: stretch;
-}
-
-.historial-text {
-  font-size: 0.85rem;
-  color: var(--color-heading);
-  font-weight: 500;
-}
-
-.historial-nota {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-  margin-top: 0.15rem;
-}
-
-.historial-fecha {
-  font-size: 0.72rem;
-  color: var(--color-text-light);
-  margin-top: 0.25rem;
 }
 
 .empty-balance {
