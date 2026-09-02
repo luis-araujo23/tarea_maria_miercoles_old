@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import UjapLogo from '../components/UjapLogo.vue'
+import AppFooter from '../components/AppFooter.vue'
 
 const router = useRouter()
 const { usuario, logout } = useAuth()
@@ -48,14 +48,7 @@ function cerrarSesion() {
       <router-view />
     </main>
 
-    <footer class="app-footer">
-      <div class="footer-inner">
-        <UjapLogo :size="28" />
-        <p class="footer-copy">
-          UJAP &middot; Proyecto academico &middot; Ingenieria de Software &middot; {{ new Date().getFullYear() }}
-        </p>
-      </div>
-    </footer>
+    <AppFooter />
   </div>
 </template>
 
@@ -64,7 +57,6 @@ function cerrarSesion() {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  padding-bottom: 4rem;
 }
 
 .app-header {
@@ -183,26 +175,6 @@ function cerrarSesion() {
   padding: 1.25rem 1.5rem 2rem;
   flex: 1;
   width: 100%;
-}
-
-.app-footer {
-  margin-top: auto;
-  background: var(--ujap-blue-dark);
-  color: rgba(255, 255, 255, 0.7);
-  padding: 1rem 1.5rem;
-}
-
-.footer-inner {
-  max-width: 1100px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.footer-copy {
-  margin: 0;
-  font-size: 0.75rem;
 }
 
 @media (max-width: 768px) {

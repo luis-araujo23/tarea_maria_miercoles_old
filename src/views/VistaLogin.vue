@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import UjapLogo from '../components/UjapLogo.vue'
+import AppFooter from '../components/AppFooter.vue'
 
 const router = useRouter()
 const { login } = useAuth()
@@ -80,10 +81,7 @@ function handleSubmit() {
       </p>
     </div>
 
-    <footer class="auth-footer">
-      <UjapLogo :size="20" />
-      <p>UJAP Split &middot; Proyecto Academico &middot; {{ new Date().getFullYear() }}</p>
-    </footer>
+    <AppFooter />
   </div>
 </template>
 
@@ -96,6 +94,10 @@ function handleSubmit() {
   justify-content: center;
   background: var(--color-bg);
   padding: 2rem 1rem;
+}
+
+.auth-page > .auth-footer-wrapper {
+  margin-top: auto;
 }
 
 .auth-card {
