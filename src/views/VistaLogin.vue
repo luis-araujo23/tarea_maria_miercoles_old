@@ -81,7 +81,6 @@ function handleSubmit() {
       </p>
     </div>
 
-    <div class="auth-spacer"></div>
     <AppFooter />
   </div>
 </template>
@@ -89,15 +88,9 @@ function handleSubmit() {
 <style scoped>
 .auth-page {
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  background: var(--color-bg);
+  display: grid;
+  grid-template-rows: 1fr auto;
   padding: 2rem 1rem;
-}
-
-.auth-spacer {
-  flex: 1;
 }
 
 .auth-card {
@@ -109,6 +102,8 @@ function handleSubmit() {
   box-shadow: var(--shadow-lg);
   padding: 2.5rem 2rem;
   text-align: center;
+  align-self: center;
+  justify-self: center;
 }
 
 .auth-brand {
