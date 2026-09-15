@@ -1,15 +1,6 @@
 import type { CategoriaMaterial } from '../types'
 
-export const CATEGORIAS_DEFAULT: CategoriaMaterial[] = [
-  { id: 'copias', nombre: 'Copias e impresiones', icono: '🖨️', keywords: ['copia', 'impres', 'xerox'] },
-  { id: 'papel', nombre: 'Hojas y papel', icono: '📄', keywords: ['hoja', 'resma', 'papel'] },
-  { id: 'escritura', nombre: 'Lápices y bolígrafos', icono: '✏️', keywords: ['lapic', 'bolígrafo', 'marcador'] },
-  { id: 'cuadernos', nombre: 'Cuadernos y apuntes', icono: '📓', keywords: ['cuaderno', 'libreta', 'apunte'] },
-  { id: 'libros', nombre: 'Libros y manuales', icono: '📚', keywords: ['libro', 'manual', 'texto'] },
-  { id: 'equipo', nombre: 'Equipo y tecnología', icono: '💾', keywords: ['usb', 'memoria', 'calculadora', 'videobeam', 'proyector', 'data show'] },
-  { id: 'laboratorio', nombre: 'Laboratorio', icono: '🔬', keywords: ['laboratorio', 'práctica', 'practica'] },
-  { id: 'otros', nombre: 'Otros materiales', icono: '📎', keywords: [] },
-]
+// El catálogo de categorías lo publica la API en `public/api/categorias.json`.
 
 export function getCategoriaId(descripcion: string, categorias: CategoriaMaterial[]): string {
   const desc = descripcion.toLowerCase()

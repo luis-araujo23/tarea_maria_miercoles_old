@@ -1,48 +1,108 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
+import { useAppStore } from '../composables/useAppStore'
 import UjapLogo from '../components/UjapLogo.vue'
 import AppFooter from '../components/AppFooter.vue'
+import {
+  validarApellido,
+  validarConfirmacionContrasena,
+  validarContrasena,
+  validarEmail,
+  validarNombrePersona,
+} from '../utils/validaciones'
+
+type Campo = 'nombre' | 'apellido' | 'email' | 'password' | 'confirmar'
 
 const router = useRouter()
 const { signup } = useAuth()
+const { agregarCompanero } = useAppStore()
 
 const nombre = ref('')
+const apellido = ref('')
 const email = ref('')
 const password = ref('')
 const confirmarPassword = ref('')
-const error = ref('')
 const cargando = ref(false)
+const enviado = ref(false)
 
-function handleSubmit() {
-  error.value = ''
+const errores = reactive<Record<Campo, string>>({
+  nombre: '',
+  apellido: '',
+  email: '',
+  password: '',
+  confirmar: '',
+})
 
-  if (!nombre.value.trim()) {
-    error.value = 'Ingresa tu nombre completo'
-    return
+const tocado = reactive<Record<Campo, boolean>>({
+  nombre: false,
+  apellido: false,
+  email: false,
+  password: false,
+  confirmar: false,
+})
+
+function validarCampo(campo: Campo): string {
+  if (campo === 'nombre') return validarNombrePersona(nombre.value) ?? ''
+  if (campo === 'apellido') return validarApellido(apellido.value) ?? ''
+  if (campo === 'email') return validarEmail(email.value) ?? ''
+  if (campo === 'password') return validarContrasena(password.value) ?? ''
+  return validarConfirmacionContrasena(password.value, confirmarPassword.value) ?? ''
+}
+
+function mostrarError(campo: Campo) {
+  if (enviado.value || tocado[campo]) {
+    errores[campo] = validarCampo(campo)
   }
-  if (!email.value.trim()) {
-    error.value = 'Ingresa tu correo electronico'
-    return
-  }
-  if (password.value.length < 6) {
-    error.value = 'La contrasena debe tener al menos 6 caracteres'
-    return
-  }
-  if (password.value !== confirmarPassword.value) {
-    error.value = 'Las contrasenas no coinciden'
-    return
-  }
+}
+
+function alCambiarPassword() {
+  mostrarError('password')
+  mostrarError('confirmar')
+}
+
+function alSalir(campo: Campo) {
+  tocado[campo] = true
+  mostrarError(campo)
+}
+
+function formularioValido() {
+  ;(Object.keys(errores) as Campo[]).forEach((campo) => {
+    errores[campo] = validarCampo(campo)
+  })
+  return !(
+    errores.nombre ||
+    errores.apellido ||
+    errores.email ||
+    errores.password ||
+    errores.confirmar
+  )
+}
+
+async function handleSubmit() {
+  enviado.value = true
+  if (!formularioValido()) return
 
   cargando.value = true
 
-  // Mock: simula latencia de API
-  setTimeout(() => {
-    signup(nombre.value.trim(), email.value.trim(), password.value)
+  const resultado = signup(nombre.value, apellido.value, email.value, password.value)
+
+  if (!resultado.ok) {
     cargando.value = false
-    router.push({ name: 'gastos' })
-  }, 400)
+    if (resultado.errores.nombre) errores.nombre = resultado.errores.nombre
+    if (resultado.errores.apellido) errores.apellido = resultado.errores.apellido
+    if (resultado.errores.email) errores.email = resultado.errores.email
+    return
+  }
+
+  // El nuevo usuario se suma al grupo. Si el API lo rechaza (por ejemplo,
+  // porque ese nombre ya estaba) la cuenta igual quedó creada.
+  const nombreVisible = `${nombre.value.trim()} ${apellido.value.trim()}`.replace(/\s+/g, ' ')
+  await agregarCompanero(nombreVisible)
+
+  cargando.value = false
+  router.push({ name: 'materiales' })
 }
 </script>
 
@@ -55,16 +115,43 @@ function handleSubmit() {
         <p>Crea tu cuenta para empezar</p>
       </div>
 
-      <form class="auth-form" @submit.prevent="handleSubmit">
-        <div class="field">
-          <label for="nombre">Nombre completo</label>
-          <input
-            id="nombre"
-            v-model="nombre"
-            type="text"
-            placeholder="Tu nombre"
-            autocomplete="name"
-          />
+      <form class="auth-form" novalidate @submit.prevent="handleSubmit">
+        <div class="field-row">
+          <div class="field">
+            <label for="nombre">Nombre</label>
+            <input
+              id="nombre"
+              v-model="nombre"
+              type="text"
+              maxlength="30"
+              placeholder="Tu nombre"
+              autocomplete="given-name"
+              :class="{ invalid: errores.nombre }"
+              :aria-invalid="!!errores.nombre"
+              aria-describedby="error-nombre"
+              @blur="alSalir('nombre')"
+              @input="mostrarError('nombre')"
+            />
+            <p v-if="errores.nombre" id="error-nombre" class="field-error">{{ errores.nombre }}</p>
+          </div>
+
+          <div class="field">
+            <label for="apellido">Apellido</label>
+            <input
+              id="apellido"
+              v-model="apellido"
+              type="text"
+              maxlength="30"
+              placeholder="Tu apellido"
+              autocomplete="family-name"
+              :class="{ invalid: errores.apellido }"
+              :aria-invalid="!!errores.apellido"
+              aria-describedby="error-apellido"
+              @blur="alSalir('apellido')"
+              @input="mostrarError('apellido')"
+            />
+            <p v-if="errores.apellido" id="error-apellido" class="field-error">{{ errores.apellido }}</p>
+          </div>
         </div>
 
         <div class="field">
@@ -73,9 +160,16 @@ function handleSubmit() {
             id="email"
             v-model="email"
             type="email"
+            maxlength="80"
             placeholder="tu@ujap.edu.ve"
             autocomplete="email"
+            :class="{ invalid: errores.email }"
+            :aria-invalid="!!errores.email"
+            aria-describedby="error-email"
+            @blur="alSalir('email')"
+            @input="mostrarError('email')"
           />
+          <p v-if="errores.email" id="error-email" class="field-error">{{ errores.email }}</p>
         </div>
 
         <div class="field">
@@ -84,9 +178,21 @@ function handleSubmit() {
             id="password"
             v-model="password"
             type="password"
-            placeholder="Minimo 6 caracteres"
+            maxlength="64"
+            placeholder="Minimo 8 caracteres"
             autocomplete="new-password"
+            :class="{ invalid: errores.password }"
+            :aria-invalid="!!errores.password"
+            aria-describedby="error-password ayuda-password"
+            @blur="alSalir('password')"
+            @input="alCambiarPassword"
           />
+          <p v-if="errores.password" id="error-password" class="field-error">
+            {{ errores.password }}
+          </p>
+          <p v-else id="ayuda-password" class="field-hint">
+            Debe tener al menos 8 caracteres, una letra y un numero.
+          </p>
         </div>
 
         <div class="field">
@@ -95,12 +201,19 @@ function handleSubmit() {
             id="confirmar"
             v-model="confirmarPassword"
             type="password"
+            maxlength="64"
             placeholder="Repite tu contrasena"
             autocomplete="new-password"
+            :class="{ invalid: errores.confirmar }"
+            :aria-invalid="!!errores.confirmar"
+            aria-describedby="error-confirmar"
+            @blur="alSalir('confirmar')"
+            @input="mostrarError('confirmar')"
           />
+          <p v-if="errores.confirmar" id="error-confirmar" class="field-error">
+            {{ errores.confirmar }}
+          </p>
         </div>
-
-        <p v-if="error" class="error">{{ error }}</p>
 
         <button type="submit" class="btn-primary" :disabled="cargando">
           {{ cargando ? 'Creando cuenta...' : 'Crear cuenta' }}
@@ -160,6 +273,12 @@ function handleSubmit() {
   text-align: left;
 }
 
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
 .field {
   margin-bottom: 1rem;
 }
@@ -188,10 +307,24 @@ function handleSubmit() {
   box-shadow: 0 0 0 3px var(--color-primary-light);
 }
 
-.error {
-  color: var(--ujap-red);
-  font-size: 0.85rem;
-  margin: 0 0 1rem;
+.field input.invalid {
+  border-color: var(--color-danger);
+}
+
+.field input.invalid:focus {
+  box-shadow: 0 0 0 3px rgba(210, 35, 42, 0.12);
+}
+
+.field-error {
+  color: var(--color-danger);
+  font-size: 0.75rem;
+  margin: 0.35rem 0 0;
+}
+
+.field-hint {
+  color: var(--color-text-light);
+  font-size: 0.75rem;
+  margin: 0.35rem 0 0;
 }
 
 .btn-primary {
@@ -205,6 +338,7 @@ function handleSubmit() {
   font-size: 0.95rem;
   cursor: pointer;
   transition: background var(--transition);
+  margin-top: 0.25rem;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -227,12 +361,10 @@ function handleSubmit() {
   font-weight: 600;
 }
 
-.auth-footer {
-  margin-top: 2rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: var(--color-text-light);
-  font-size: 0.75rem;
+@media (max-width: 480px) {
+  .field-row {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }
 </style>

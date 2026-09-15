@@ -1,253 +1,198 @@
-import { ref, watch } from 'vue'
-import type { AppState, Companero, Gasto, Pago, CategoriaMaterial } from '../types'
-import { divisionIgual } from '../utils/balances'
-import { CATEGORIAS_DEFAULT } from '../utils/categorias'
+import { computed, ref } from 'vue'
+import type { AppState, CategoriaMaterial, Companero, Gasto, Pago, Producto } from '../types'
+import * as api from '../services/apiUjapSplit'
+import type { DatosCompra, DatosGasto, DatosPago } from '../services/apiUjapSplit'
+import { mensajeDeError } from '../services/clienteHttp'
+import { useAuth } from './useAuth'
+import { companeroDeUsuario } from '../utils/perfil'
+import type { DatosCategoria, DatosProducto } from '../utils/validaciones'
 
-const STORAGE_KEY = 'ujap-split-state'
+/**
+ * Estado compartido de la aplicación. El módulo se evalúa una sola vez, así
+ * que todas las vistas leen los mismos datos y una sola petición los alimenta.
+ *
+ * Aquí no hay datos de ejemplo ni acceso a localStorage: todo llega desde la
+ * API (`services/apiUjapSplit`) y todo cambio vuelve a pasar por ella.
+ */
 
-const DEFAULT_COMPANEROS: Companero[] = [
-  { id: 'c1', nombre: 'María' },
-  { id: 'c2', nombre: 'Juan' },
-  { id: 'c3', nombre: 'Carlos' },
-  { id: 'c4', nombre: 'Ana' },
-]
+const companeros = ref<Companero[]>([])
+const gastos = ref<Gasto[]>([])
+const pagos = ref<Pago[]>([])
+const categorias = ref<CategoriaMaterial[]>([])
+const productos = ref<Producto[]>([])
 
-function crearGastosIniciales(): Gasto[] {
-  const ids = DEFAULT_COMPANEROS.map((c) => c.id)
-  const division = divisionIgual(ids)
+const cargando = ref(false)
+const guardando = ref(false)
+const error = ref<string | null>(null)
+const cargado = ref(false)
+const sincronizadoEn = ref<number | null>(null)
 
-  return [
-    {
-      id: 1,
-      descripcion: 'Copias de apuntes — Cálculo I (80 hojas)',
-      monto: 12.0,
-      pagadoPorId: 'c1',
-      fecha: '2026-01-15',
-      tipoDivision: 'igual',
-      divisiones: division,
-    },
-    {
-      id: 2,
-      descripcion: 'Caja de lápices y bolígrafos para el grupo',
-      monto: 6.5,
-      pagadoPorId: 'c2',
-      fecha: '2026-01-18',
-      tipoDivision: 'igual',
-      divisiones: division,
-    },
-    {
-      id: 3,
-      descripcion: 'Alquiler de videobeam — exposición final',
-      monto: 25.0,
-      pagadoPorId: 'c3',
-      fecha: '2026-01-22',
-      tipoDivision: 'porcentaje',
-      divisiones: [
-        { companeroId: 'c1', valor: 30 },
-        { companeroId: 'c2', valor: 25 },
-        { companeroId: 'c3', valor: 25 },
-        { companeroId: 'c4', valor: 20 },
-      ],
-    },
-    {
-      id: 4,
-      descripcion: 'Resma de hojas tamaño carta',
-      monto: 8.5,
-      pagadoPorId: 'c4',
-      fecha: '2026-02-01',
-      tipoDivision: 'igual',
-      divisiones: division,
-    },
-    {
-      id: 5,
-      descripcion: 'Impresión de trabajos de laboratorio (x4)',
-      monto: 10.0,
-      pagadoPorId: 'c1',
-      fecha: '2026-02-05',
-      tipoDivision: 'exacto',
-      divisiones: [
-        { companeroId: 'c1', valor: 2.5 },
-        { companeroId: 'c2', valor: 2.5 },
-        { companeroId: 'c3', valor: 2.5 },
-        { companeroId: 'c4', valor: 2.5 },
-      ],
-    },
-  ]
+/** Evita lanzar dos cargas simultáneas si varias vistas piden los datos. */
+let peticionEnCurso: Promise<void> | null = null
+
+function aplicarEstado(estado: AppState) {
+  companeros.value = estado.companeros
+  gastos.value = estado.gastos
+  pagos.value = estado.pagos
+  categorias.value = estado.categorias
+  productos.value = estado.productos
 }
 
-function migrarPago(raw: Record<string, unknown>, companeros: Companero[]): Pago | null {
-  if (typeof raw.id !== 'number') return null
-  if (typeof raw.deId !== 'string' || typeof raw.paraId !== 'string') return null
-  if (typeof raw.monto !== 'number' || raw.monto <= 0) return null
-  if (raw.deId === raw.paraId) return null
-  if (!companeros.some((c) => c.id === raw.deId)) return null
-  if (!companeros.some((c) => c.id === raw.paraId)) return null
+async function pedirDatos(forzarServidor: boolean): Promise<void> {
+  cargando.value = true
+  error.value = null
 
-  const fecha = typeof raw.fecha === 'string' ? raw.fecha : new Date().toISOString().slice(0, 10)
-  const nota = typeof raw.nota === 'string' ? raw.nota : undefined
-
-  return {
-    id: raw.id,
-    deId: raw.deId,
-    paraId: raw.paraId,
-    monto: raw.monto,
-    fecha,
-    nota,
-  }
-}
-
-function migrarGasto(raw: Record<string, unknown>, companeros: Companero[]): Gasto | null {
-  if (typeof raw.id !== 'number' || typeof raw.descripcion !== 'string') return null
-
-  const monto = typeof raw.monto === 'number' ? raw.monto : NaN
-  if (Number.isNaN(monto) || monto <= 0) return null
-  let pagadoPorId = typeof raw.pagadoPorId === 'string' ? raw.pagadoPorId : ''
-
-  if (!pagadoPorId && typeof raw.pagadoPor === 'string') {
-    pagadoPorId =
-      companeros.find((c) => c.nombre === raw.pagadoPor)?.id ?? companeros[0]?.id ?? ''
-  }
-
-  const fecha = typeof raw.fecha === 'string' ? raw.fecha : new Date().toISOString().slice(0, 10)
-  const tipoDivision = (raw.tipoDivision as Gasto['tipoDivision']) ?? 'igual'
-  const divisiones = Array.isArray(raw.divisiones)
-    ? (raw.divisiones as Gasto['divisiones'])
-    : divisionIgual(companeros.map((c) => c.id))
-
-  return {
-    id: raw.id,
-    descripcion: raw.descripcion,
-    monto,
-    pagadoPorId,
-    fecha,
-    tipoDivision,
-    divisiones,
-  }
-}
-
-function migrarCategoria(raw: Record<string, unknown>): CategoriaMaterial | null {
-  if (typeof raw.id !== 'string' || typeof raw.nombre !== 'string') return null
-  if (typeof raw.icono !== 'string') return null
-  if (!Array.isArray(raw.keywords)) return null
-  return {
-    id: raw.id,
-    nombre: raw.nombre,
-    icono: raw.icono,
-    keywords: raw.keywords.filter((k): k is string => typeof k === 'string'),
-  }
-}
-
-function cargarEstado(): AppState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as Record<string, unknown>
-      const companeros = (parsed.companeros as Companero[]) ?? DEFAULT_COMPANEROS
-      if (companeros.length && Array.isArray(parsed.gastos)) {
-        const gastos = (parsed.gastos as Record<string, unknown>[])
-          .map((g) => migrarGasto(g, companeros))
-          .filter((g): g is Gasto => g !== null)
-
-        const pagos = Array.isArray(parsed.pagos)
-          ? (parsed.pagos as Record<string, unknown>[])
-              .map((p) => migrarPago(p, companeros))
-              .filter((p): p is Pago => p !== null)
-          : []
-
-        const categorias = Array.isArray(parsed.categorias)
-          ? (parsed.categorias as Record<string, unknown>[])
-              .map((c) => migrarCategoria(c))
-              .filter((c): c is CategoriaMaterial => c !== null)
-          : CATEGORIAS_DEFAULT
-
-        return {
-          companeros,
-          gastos,
-          pagos,
-          categorias,
-        }
-      }
-    }
-  } catch {
-    /* usar datos iniciales */
-  }
-
-  return {
-    companeros: DEFAULT_COMPANEROS,
-    gastos: crearGastosIniciales(),
-    pagos: [],
-    categorias: CATEGORIAS_DEFAULT,
+    aplicarEstado(await api.obtenerEstado(forzarServidor))
+    cargado.value = true
+    sincronizadoEn.value = Date.now()
+  } catch (e) {
+    // Si ya había datos en pantalla se conservan: mejor mostrar algo viejo
+    // junto al aviso de error que dejar la vista en blanco.
+    error.value = mensajeDeError(e)
+  } finally {
+    cargando.value = false
   }
 }
 
-function guardarEstado(state: AppState) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+/**
+ * Envuelve una escritura contra la API. Devuelve `null` si salió bien o el
+ * mensaje de error para que la vista lo muestre en su toast o formulario.
+ */
+async function ejecutar(operacion: () => Promise<void>): Promise<string | null> {
+  guardando.value = true
+
+  try {
+    await operacion()
+    sincronizadoEn.value = Date.now()
+    return null
+  } catch (e) {
+    return mensajeDeError(e)
+  } finally {
+    guardando.value = false
+  }
 }
 
 export function useAppStore() {
-  const inicial = cargarEstado()
-  const companeros = ref<Companero[]>(inicial.companeros)
-  const gastos = ref<Gasto[]>(inicial.gastos)
-  const pagos = ref<Pago[]>(inicial.pagos)
-  const categorias = ref<CategoriaMaterial[]>(inicial.categorias)
-  const nextGastoId = ref(
-    Math.max(0, ...gastos.value.map((g) => g.id)) + 1
-  )
-  const nextPagoId = ref(
-    Math.max(0, ...pagos.value.map((p) => p.id)) + 1
-  )
-  const nextCompaneroId = ref(
-    Math.max(
-      0,
-      ...companeros.value.map((c) => Number.parseInt(c.id.replace(/\D/g, ''), 10) || 0)
-    ) + 1
-  )
+  /** True cuando ya hay datos utilizables en pantalla. */
+  const listo = computed(() => cargado.value)
 
-  watch(
-    [companeros, gastos, pagos, categorias],
-    () => {
-      guardarEstado({
-        companeros: companeros.value,
-        gastos: gastos.value,
-        pagos: pagos.value,
-        categorias: categorias.value,
-      })
-    },
-    { deep: true }
-  )
+  /**
+   * Carga los datos del grupo. Solo consulta la API la primera vez; las
+   * siguientes llamadas reutilizan lo que ya está en memoria.
+   */
+  function cargarDatos(forzarServidor = false): Promise<void> {
+    if (peticionEnCurso) return peticionEnCurso
+    if (cargado.value && !forzarServidor) return Promise.resolve()
+
+    peticionEnCurso = pedirDatos(forzarServidor).finally(() => {
+      peticionEnCurso = null
+    })
+
+    return peticionEnCurso
+  }
+
+  /** Vuelve a pedir el estado original al servidor y descarta los cambios locales. */
+  function restaurarDesdeServidor(): Promise<void> {
+    return cargarDatos(true)
+  }
+
+  /** Repite la carga tras un fallo, sin descartar datos ya cargados. */
+  function reintentar(): Promise<void> {
+    return cargarDatos(cargado.value)
+  }
 
   function nombreCompanero(id: string): string {
     return companeros.value.find((c) => c.id === id)?.nombre ?? 'Desconocido'
   }
 
-  function agregarCategoria(cat: Omit<CategoriaMaterial, 'id'>) {
-    const id = cat.nombre
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '')
-    const existing = categorias.value.find((c) => c.id === id)
-    if (existing) {
-      existing.keywords = [...new Set([...existing.keywords, ...cat.keywords])]
-      existing.nombre = cat.nombre
-      existing.icono = cat.icono
-    } else {
-      categorias.value.push({ id, ...cat })
-    }
+  function buscarGasto(id: number): Gasto | null {
+    return gastos.value.find((g) => g.id === id) ?? null
   }
 
-  function editarCategoria(id: string, updates: Partial<Omit<CategoriaMaterial, 'id'>>) {
-    const cat = categorias.value.find((c) => c.id === id)
-    if (cat) {
-      if (updates.nombre !== undefined) cat.nombre = updates.nombre
-      if (updates.icono !== undefined) cat.icono = updates.icono
-      if (updates.keywords !== undefined) cat.keywords = updates.keywords
-    }
+  function agregarGasto(datos: DatosGasto) {
+    return ejecutar(async () => {
+      gastos.value = await api.crearGasto(datos)
+    })
+  }
+
+  function actualizarGasto(id: number, datos: DatosGasto) {
+    return ejecutar(async () => {
+      gastos.value = await api.actualizarGasto(id, datos)
+    })
+  }
+
+  function eliminarGasto(id: number) {
+    return ejecutar(async () => {
+      gastos.value = await api.eliminarGasto(id)
+    })
+  }
+
+  function vaciarGastos() {
+    return ejecutar(async () => {
+      gastos.value = await api.vaciarGastos()
+    })
+  }
+
+  function agregarPago(datos: DatosPago) {
+    return ejecutar(async () => {
+      const { usuario, esAdmin } = useAuth()
+      if (!esAdmin.value) {
+        const titular = companeroDeUsuario(usuario.value, companeros.value)
+        if (!titular || datos.deId !== titular.id) {
+          throw new Error('Solo puedes registrar los pagos de tu propia cuenta')
+        }
+      }
+      pagos.value = await api.crearPago(datos)
+    })
+  }
+
+  function eliminarPago(id: number) {
+    return ejecutar(async () => {
+      pagos.value = await api.eliminarPago(id)
+    })
+  }
+
+  function agregarCompanero(nombre: string) {
+    return ejecutar(async () => {
+      companeros.value = await api.crearCompanero(nombre)
+    })
+  }
+
+  function eliminarCompanero(id: string) {
+    return ejecutar(async () => {
+      companeros.value = await api.eliminarCompanero(id)
+    })
+  }
+
+  function guardarCategoria(datos: DatosCategoria, id?: string) {
+    return ejecutar(async () => {
+      categorias.value = await api.guardarCategoria(datos, id)
+    })
   }
 
   function eliminarCategoria(id: string) {
-    categorias.value = categorias.value.filter((c) => c.id !== id)
+    return ejecutar(async () => {
+      categorias.value = await api.eliminarCategoria(id)
+    })
+  }
+
+  function comprarProducto(datos: DatosCompra) {
+    return ejecutar(async () => {
+      gastos.value = await api.crearCompra(datos)
+    })
+  }
+
+  function guardarProducto(datos: DatosProducto, id?: string) {
+    return ejecutar(async () => {
+      productos.value = await api.guardarProducto(datos, id)
+    })
+  }
+
+  function eliminarProducto(id: string) {
+    return ejecutar(async () => {
+      productos.value = await api.eliminarProducto(id)
+    })
   }
 
   return {
@@ -255,12 +200,33 @@ export function useAppStore() {
     gastos,
     pagos,
     categorias,
-    nextGastoId,
-    nextPagoId,
-    nextCompaneroId,
+    productos,
+
+    cargando,
+    guardando,
+    error,
+    listo,
+    sincronizadoEn,
+
+    cargarDatos,
+    restaurarDesdeServidor,
+    reintentar,
+
     nombreCompanero,
-    agregarCategoria,
-    editarCategoria,
+    buscarGasto,
+
+    agregarGasto,
+    actualizarGasto,
+    eliminarGasto,
+    vaciarGastos,
+    agregarPago,
+    eliminarPago,
+    agregarCompanero,
+    eliminarCompanero,
+    guardarCategoria,
     eliminarCategoria,
+    comprarProducto,
+    guardarProducto,
+    eliminarProducto,
   }
 }

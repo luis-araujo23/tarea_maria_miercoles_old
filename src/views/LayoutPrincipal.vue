@@ -1,11 +1,65 @@
 <script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
+import { useAppStore } from '../composables/useAppStore'
+import { useTasaCambio } from '../composables/useTasaCambio'
 import UjapLogo from '../components/UjapLogo.vue'
+import ModalConfirmacion from '../components/ModalConfirmacion.vue'
 import AppFooter from '../components/AppFooter.vue'
+import { companeroDeUsuario } from '../utils/perfil'
 
 const router = useRouter()
-const { usuario, logout } = useAuth()
+const { usuario, esAdmin, logout } = useAuth()
+const {
+  tasa,
+  cargando,
+  error,
+  disponible,
+  usandoRespaldo,
+  actualizadoTexto,
+  cargarTasa,
+  reintentar,
+} = useTasaCambio()
+
+const {
+  cargando: cargandoDatos,
+  error: errorDatos,
+  sincronizadoEn,
+  cargarDatos,
+  restaurarDesdeServidor,
+  agregarCompanero,
+  companeros,
+} = useAppStore()
+
+// Los gastos del grupo se piden en el setup del layout, antes de que se creen
+// las vistas hijas, para que ninguna alcance a renderizarse con listas vacias.
+cargarDatos().then(() => {
+  if (esAdmin.value || !usuario.value) return
+  if (companeroDeUsuario(usuario.value, companeros.value)) return
+  agregarCompanero(usuario.value.nombre)
+})
+
+// La tasa se pide una sola vez al entrar al area privada y queda compartida
+// por todas las vistas hijas.
+onMounted(() => {
+  cargarTasa()
+})
+
+const sincronizadoTexto = computed(() => {
+  if (sincronizadoEn.value === null) return ''
+  return new Date(sincronizadoEn.value).toLocaleTimeString('es-VE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+})
+
+const restauracionVisible = ref(false)
+
+function restaurar() {
+  restauracionVisible.value = false
+  restaurarDesdeServidor()
+}
 
 function cerrarSesion() {
   logout()
@@ -25,24 +79,90 @@ function cerrarSesion() {
           </div>
         </div>
         <nav class="header-nav" aria-label="Navegacion principal">
-          <router-link to="/app/gastos" class="nav-item" active-class="active">
-            Gastos
+          <router-link v-if="esAdmin" to="/app/dashboard" class="nav-item" active-class="active">
+            Dashboard
           </router-link>
-          <router-link to="/app/companeros" class="nav-item" active-class="active">
-            Companeros
+          <router-link v-if="esAdmin" to="/app/gastos" class="nav-item" active-class="active">
+            Gastos
           </router-link>
           <router-link to="/app/materiales" class="nav-item" active-class="active">
             Materiales
           </router-link>
-          <router-link to="/app/pagos" class="nav-item" active-class="active">
-            Pagos
-          </router-link>
-          <router-link to="/app/balance" class="nav-item" active-class="active">
-            Balance
+          <router-link v-if="!esAdmin" to="/app/balance" class="nav-item" active-class="active">
+            Mis deudas
           </router-link>
         </nav>
         <div class="header-right">
-          <span v-if="usuario" class="user-name">{{ usuario.nombre }}</span>
+          <div class="tasa" :class="{ 'tasa-error': errorDatos !== null }">
+            <template v-if="cargandoDatos">
+              <span class="tasa-spinner" aria-hidden="true"></span>
+              <span class="tasa-texto">Sincronizando…</span>
+            </template>
+
+            <template v-else>
+              <span
+                class="datos-punto"
+                :class="errorDatos ? 'malo' : 'bueno'"
+                aria-hidden="true"
+              ></span>
+              <span class="tasa-texto">
+                {{ errorDatos ? 'Datos sin sincronizar' : `Datos ${sincronizadoTexto}` }}
+              </span>
+            </template>
+
+            <button
+              type="button"
+              class="tasa-btn"
+              :disabled="cargandoDatos"
+              :title="errorDatos ?? 'Restaurar los datos originales del servidor'"
+              @click="restauracionVisible = true"
+            >
+              ⟳
+            </button>
+          </div>
+
+          <div class="tasa" :class="{ 'tasa-error': error && !disponible }">
+            <template v-if="cargando && !disponible">
+              <span class="tasa-spinner" aria-hidden="true"></span>
+              <span class="tasa-texto">Cargando tasa…</span>
+            </template>
+
+            <template v-else-if="disponible && tasa">
+              <span class="tasa-label">USD</span>
+              <span class="tasa-valor">Bs {{ tasa.valor.toFixed(2) }}</span>
+              <button
+                type="button"
+                class="tasa-btn"
+                :disabled="cargando"
+                :title="
+                  usandoRespaldo
+                    ? `${error} Mostrando la última tasa guardada.`
+                    : `Tasa del ${actualizadoTexto}. Actualizar`
+                "
+                @click="reintentar"
+              >
+                {{ usandoRespaldo ? '⚠' : '⟳' }}
+              </button>
+            </template>
+
+            <template v-else>
+              <span class="tasa-texto">Tasa no disponible</span>
+              <button
+                type="button"
+                class="tasa-btn"
+                :disabled="cargando"
+                :title="error ?? 'Reintentar'"
+                @click="reintentar"
+              >
+                ⟳
+              </button>
+            </template>
+          </div>
+
+          <span v-if="usuario" class="user-name">
+            {{ usuario.nombre }}
+            <span v-if="esAdmin" class="user-rol">Admin</span>
+          </span>
           <button type="button" class="btn-logout" @click="cerrarSesion">
             Salir
           </button>
@@ -55,6 +175,15 @@ function cerrarSesion() {
     </main>
 
     <AppFooter />
+
+    <ModalConfirmacion
+      :visible="restauracionVisible"
+      titulo="Restaurar datos del servidor"
+      mensaje="Se volveran a descargar los gastos, companeros y categorias originales. Los cambios que hiciste en este navegador se perderan."
+      confirmar-texto="Restaurar"
+      @confirmar="restaurar"
+      @cancelar="restauracionVisible = false"
+    />
   </div>
 </template>
 
@@ -151,10 +280,104 @@ function cerrarSesion() {
   gap: 0.75rem;
 }
 
+.tasa {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--color-bg-muted);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+}
+
+.tasa-error {
+  border-color: var(--color-danger);
+}
+
+.tasa-label {
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--color-text-light);
+}
+
+.tasa-valor {
+  font-weight: 700;
+  color: var(--ujap-blue);
+  font-variant-numeric: tabular-nums;
+}
+
+.tasa-texto {
+  color: var(--color-text-muted);
+}
+
+.datos-punto {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+}
+
+.datos-punto.bueno {
+  background: var(--color-positive);
+}
+
+.datos-punto.malo {
+  background: var(--color-danger);
+}
+
+.tasa-btn {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0;
+  font-family: inherit;
+}
+
+.tasa-btn:hover:not(:disabled) {
+  color: var(--ujap-blue);
+}
+
+.tasa-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tasa-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--ujap-blue);
+  border-radius: var(--radius-full);
+  animation: tasa-giro 0.7s linear infinite;
+}
+
+@keyframes tasa-giro {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .user-name {
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.user-rol {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ujap-red);
+  background: color-mix(in srgb, var(--ujap-red) 12%, white);
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
 }
 
 .btn-logout {

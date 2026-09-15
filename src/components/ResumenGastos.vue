@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
 import type { Companero, Gasto, Pago } from '../types'
 import { getAvatarColor, getInitials } from '../utils/avatars'
 import { calcularBalances, simplificarDeudas } from '../utils/balances'
+import { useTasaCambio } from '../composables/useTasaCambio'
 
 const props = defineProps<{
   gastos: Gasto[]
@@ -11,11 +11,21 @@ const props = defineProps<{
   companeros: Companero[]
 }>()
 
-const router = useRouter()
+const {
+  cargando: cargandoTasa,
+  error: errorTasa,
+  disponible: tasaDisponible,
+  usandoRespaldo,
+  actualizadoTexto,
+  reintentar,
+  formatearBolivares,
+} = useTasaCambio()
 
 const total = computed(() =>
   props.gastos.reduce((acc, gasto) => acc + gasto.monto, 0)
 )
+
+const totalEnBolivares = computed(() => formatearBolivares(total.value))
 
 const balances = computed(() =>
   calcularBalances(props.gastos, props.pagos, props.companeros)
@@ -38,10 +48,34 @@ function nombre(id: string): string {
     <div class="total-card">
       <span class="total-label">Total del semestre</span>
       <span class="total-amount">${{ total.toFixed(2) }}</span>
+
+      <span v-if="cargandoTasa && !tasaDisponible" class="total-bs cargando">
+        Consultando tasa del día…
+      </span>
+      <span v-else-if="tasaDisponible" class="total-bs">
+        {{ totalEnBolivares }}
+        <span class="total-bs-fecha">· tasa del {{ actualizadoTexto }}</span>
+      </span>
+
       <span class="total-meta">
         {{ gastos.length }} {{ gastos.length === 1 ? 'movimiento' : 'movimientos' }}
         · {{ companeros.length }} {{ companeros.length === 1 ? 'persona' : 'personas' }}
       </span>
+
+      <p v-if="errorTasa" class="tasa-error" role="alert">
+        <span>
+          {{ errorTasa }}
+          <template v-if="usandoRespaldo">Se muestra la última tasa guardada.</template>
+        </span>
+        <button
+          type="button"
+          class="btn-reintentar"
+          :disabled="cargandoTasa"
+          @click="reintentar"
+        >
+          {{ cargandoTasa ? 'Reintentando…' : 'Reintentar' }}
+        </button>
+      </p>
     </div>
 
     <div v-if="balances.length > 0 && gastos.length > 0" class="balances">
@@ -81,6 +115,9 @@ function nombre(id: string): string {
             <strong>{{ nombre(deuda.deId) }}</strong> le debe
             <strong>${{ deuda.monto.toFixed(2) }}</strong> a
             <strong>{{ nombre(deuda.paraId) }}</strong>
+            <span v-if="tasaDisponible" class="deuda-bs">
+              {{ formatearBolivares(deuda.monto) }}
+            </span>
           </span>
         </li>
       </ul>
@@ -88,17 +125,6 @@ function nombre(id: string): string {
 
     <div v-else-if="gastos.length > 0 && balances.length > 0" class="settled">
       <span>✓</span> ¡Todos están a mano!
-    </div>
-
-    <div v-if="gastos.length > 0" class="settle-section">
-      <button
-        type="button"
-        class="btn-settle-main"
-        :disabled="deudasSimplificadas.length === 0 || companeros.length < 2"
-        @click="router.push({ name: 'pagos' })"
-      >
-        Ir a Pagos
-      </button>
     </div>
 
     <div v-if="gastos.length === 0" class="empty-balance">
@@ -169,11 +195,65 @@ function nombre(id: string): string {
   line-height: 1.1;
 }
 
+.total-bs {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.total-bs.cargando {
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.total-bs-fecha {
+  font-weight: 500;
+  font-size: 0.72rem;
+  color: var(--color-text-light);
+}
+
 .total-meta {
   display: block;
   margin-top: 0.5rem;
   font-size: 0.8rem;
   color: var(--color-text-light);
+}
+
+.tasa-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0.6rem;
+  background: #fef2f2;
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--color-danger);
+  text-align: left;
+}
+
+.btn-reintentar {
+  flex-shrink: 0;
+  padding: 0.25rem 0.6rem;
+  background: transparent;
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
+  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.btn-reintentar:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .balances,
@@ -272,6 +352,14 @@ function nombre(id: string): string {
   font-size: 0.875rem;
   color: var(--color-text);
   line-height: 1.4;
+}
+
+.deuda-bs {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+  color: var(--color-text-light);
+  font-variant-numeric: tabular-nums;
 }
 
 .settled {

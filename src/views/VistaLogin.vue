@@ -6,9 +6,9 @@ import UjapLogo from '../components/UjapLogo.vue'
 import AppFooter from '../components/AppFooter.vue'
 
 const router = useRouter()
-const { login } = useAuth()
+const { login, esAdmin } = useAuth()
 
-const email = ref('')
+const nombre = ref('')
 const password = ref('')
 const error = ref('')
 const cargando = ref(false)
@@ -16,8 +16,8 @@ const cargando = ref(false)
 function handleSubmit() {
   error.value = ''
 
-  if (!email.value.trim()) {
-    error.value = 'Ingresa tu correo electronico'
+  if (!nombre.value.trim()) {
+    error.value = 'Ingresa tu nombre de usuario'
     return
   }
   if (!password.value) {
@@ -27,11 +27,16 @@ function handleSubmit() {
 
   cargando.value = true
 
-  // Mock: simula latencia de API
   setTimeout(() => {
-    login(email.value.trim(), password.value)
+    const ok = login(nombre.value.trim(), password.value)
     cargando.value = false
-    router.push({ name: 'gastos' })
+
+    if (!ok) {
+      error.value = 'Usuario o contrasena incorrectos'
+      return
+    }
+
+    router.push({ name: esAdmin.value ? 'dashboard' : 'materiales' })
   }, 400)
 }
 </script>
@@ -47,13 +52,13 @@ function handleSubmit() {
 
       <form class="auth-form" @submit.prevent="handleSubmit">
         <div class="field">
-          <label for="email">Correo electronico</label>
+          <label for="usuario">Usuario o correo</label>
           <input
-            id="email"
-            v-model="email"
-            type="email"
-            placeholder="tu@ujap.edu.ve"
-            autocomplete="email"
+            id="usuario"
+            v-model="nombre"
+            type="text"
+            placeholder="Nombre o correo electronico"
+            autocomplete="username"
           />
         </div>
 
@@ -191,14 +196,5 @@ function handleSubmit() {
 .auth-switch a {
   color: var(--ujap-blue);
   font-weight: 600;
-}
-
-.auth-footer {
-  margin-top: 2rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: var(--color-text-light);
-  font-size: 0.75rem;
 }
 </style>

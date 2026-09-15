@@ -7,14 +7,24 @@ import ResumenGastos from '../components/ResumenGastos.vue'
 import FormularioGasto from '../components/FormularioGasto.vue'
 import ModalConfirmacion from '../components/ModalConfirmacion.vue'
 import ToastNotificacion from '../components/ToastNotificacion.vue'
+import EstadoDatos from '../components/EstadoDatos.vue'
 import { validarGasto } from '../utils/validaciones'
 
 const {
   companeros,
   gastos,
   pagos,
-  nextGastoId,
+  cargando,
+  guardando,
+  error,
+  listo,
+  reintentar,
   nombreCompanero,
+  agregarGasto,
+  actualizarGasto,
+  eliminarGasto,
+  vaciarGastos,
+  agregarPago,
 } = useAppStore()
 
 const formularioVisible = ref(false)
@@ -63,23 +73,26 @@ function cerrarFormulario() {
 
 type GastoPayload = Omit<Gasto, 'id'>
 
-function guardarGasto(payload: GastoPayload) {
+// Se valida antes de llamar al API para dar respuesta inmediata; el servidor
+// vuelve a validar por su cuenta antes de guardar.
+async function guardarGasto(payload: GastoPayload) {
   const err = validarGasto(payload, companeros.value)
   if (err) {
     mostrarToast(err, 'error')
     return
   }
 
-  if (gastoEditando.value) {
-    const idx = gastos.value.findIndex((g) => g.id === gastoEditando.value!.id)
-    if (idx >= 0) {
-      gastos.value[idx] = { ...gastoEditando.value, ...payload }
-    }
-    mostrarToast('Gasto actualizado correctamente')
-  } else {
-    gastos.value.unshift({ id: nextGastoId.value++, ...payload })
-    mostrarToast('Gasto agregado correctamente')
+  const editando = gastoEditando.value
+  const fallo = editando
+    ? await actualizarGasto(editando.id, payload)
+    : await agregarGasto(payload)
+
+  if (fallo) {
+    mostrarToast(fallo, 'error')
+    return
   }
+
+  mostrarToast(editando ? 'Gasto actualizado correctamente' : 'Gasto agregado correctamente')
   cerrarFormulario()
 }
 
@@ -90,10 +103,10 @@ function solicitarEliminarGasto(id: number) {
     titulo: 'Eliminar gasto',
     mensaje: `¿Eliminar "${gasto?.descripcion ?? 'este gasto'}"? Esta accion no se puede deshacer.`,
     confirmarTexto: 'Eliminar',
-    onConfirmar: () => {
-      gastos.value = gastos.value.filter((g) => g.id !== id)
-      mostrarToast('Gasto eliminado')
+    onConfirmar: async () => {
       confirmacion.value.visible = false
+      const fallo = await eliminarGasto(id)
+      mostrarToast(fallo ?? 'Gasto eliminado', fallo ? 'error' : 'success')
     },
   }
 }
@@ -103,21 +116,18 @@ function editarGasto(id: number) {
   if (gasto) abrirFormulario(gasto)
 }
 
-function registrarPago(payload: {
+async function registrarPago(payload: {
   deId: string
   paraId: string
   monto: number
   nota?: string
 }) {
-  const { pagos, nextPagoId } = useAppStore()
-  pagos.value.unshift({
-    id: nextPagoId.value++,
-    deId: payload.deId,
-    paraId: payload.paraId,
-    monto: payload.monto,
-    fecha: new Date().toISOString().slice(0, 10),
-    nota: payload.nota,
-  })
+  const fallo = await agregarPago(payload)
+  if (fallo) {
+    mostrarToast(fallo, 'error')
+    return
+  }
+
   mostrarToast(
     `Pago registrado: ${nombreCompanero(payload.deId)} → ${nombreCompanero(payload.paraId)}`
   )
@@ -129,103 +139,113 @@ function limpiarGastos() {
     titulo: 'Limpiar registros',
     mensaje: '¿Eliminar todos los gastos? Los pagos registrados se mantendran.',
     confirmarTexto: 'Limpiar todo',
-    onConfirmar: () => {
-      gastos.value = []
-      mostrarToast('Todos los gastos fueron eliminados')
+    onConfirmar: async () => {
       confirmacion.value.visible = false
+      const fallo = await vaciarGastos()
+      mostrarToast(fallo ?? 'Todos los gastos fueron eliminados', fallo ? 'error' : 'success')
     },
   }
 }
 </script>
 
 <template>
-  <div class="vista-gastos-layout">
-    <section class="lista-gastos" aria-labelledby="gastos-title">
-      <div class="section-header">
-        <div class="section-title-group">
-          <h1 id="gastos-title">Gastos del grupo</h1>
-          <p class="section-subtitle">Calculo I — Semestre 2026</p>
+  <EstadoDatos
+    :cargando="cargando"
+    :error="error"
+    :listo="listo"
+    :filas="4"
+    @reintentar="reintentar"
+  >
+    <div class="vista-gastos-layout">
+      <section class="lista-gastos" aria-labelledby="gastos-title">
+        <div class="section-header">
+          <div class="section-title-group">
+            <h1 id="gastos-title">Gastos del grupo</h1>
+            <p class="section-subtitle">Calculo I — Semestre 2026</p>
+          </div>
+          <span class="badge-count">{{ gastos.length }}</span>
         </div>
-        <span class="badge-count">{{ gastos.length }}</span>
-      </div>
 
-      <div v-if="gastos.length === 0" class="empty-state">
-        <div class="empty-illustration">📋</div>
-        <h3>Sin gastos registrados</h3>
-        <p>Agrega copias, lapices, videobeam u otros materiales universitarios.</p>
+        <div v-if="gastos.length === 0" class="empty-state">
+          <div class="empty-illustration">📋</div>
+          <h3>Sin gastos registrados</h3>
+          <p>Agrega copias, lapices, videobeam u otros materiales universitarios.</p>
+          <button
+            type="button"
+            class="btn-cta"
+            :disabled="!puedeAgregarGastos || guardando"
+            @click="abrirFormulario()"
+          >
+            + Agregar primer gasto
+          </button>
+        </div>
+
+        <div v-else class="cards-container">
+          <GastoCard
+            v-for="gasto in gastosOrdenados"
+            :key="gasto.id"
+            :gasto="gasto"
+            :companeros="companeros"
+            @editar="editarGasto"
+            @eliminar="solicitarEliminarGasto"
+          />
+        </div>
+
         <button
+          v-if="gastos.length > 0"
           type="button"
-          class="btn-cta"
-          :disabled="!puedeAgregarGastos"
+          class="btn-clear-list"
+          :disabled="guardando"
+          @click="limpiarGastos"
+        >
+          {{ guardando ? 'Guardando…' : 'Limpiar todos los gastos' }}
+        </button>
+
+        <button
+          v-if="puedeAgregarGastos"
+          type="button"
+          class="fab"
+          aria-label="Agregar gasto"
+          :disabled="guardando"
           @click="abrirFormulario()"
         >
-          + Agregar primer gasto
+          +
         </button>
-      </div>
+      </section>
 
-      <div v-else class="cards-container">
-        <GastoCard
-          v-for="gasto in gastosOrdenados"
-          :key="gasto.id"
-          :gasto="gasto"
+      <aside class="sidebar">
+        <ResumenGastos
+          :gastos="gastos"
+          :pagos="pagos"
           :companeros="companeros"
-          @editar="editarGasto"
-          @eliminar="solicitarEliminarGasto"
+          @registrar-pago="registrarPago"
         />
-      </div>
+      </aside>
 
-      <button
-        v-if="gastos.length > 0"
-        type="button"
-        class="btn-clear-list"
-        @click="limpiarGastos"
-      >
-        Limpiar todos los gastos
-      </button>
-
-      <button
-        v-if="puedeAgregarGastos"
-        type="button"
-        class="fab"
-        aria-label="Agregar gasto"
-        @click="abrirFormulario()"
-      >
-        +
-      </button>
-    </section>
-
-    <aside class="sidebar">
-      <ResumenGastos
-        :gastos="gastos"
-        :pagos="pagos"
+      <FormularioGasto
+        :visible="formularioVisible"
         :companeros="companeros"
-        @registrar-pago="registrarPago"
+        :gasto-editar="gastoEditando"
+        @cerrar="cerrarFormulario"
+        @guardar="guardarGasto"
       />
-    </aside>
 
-    <FormularioGasto
-      :visible="formularioVisible"
-      :companeros="companeros"
-      :gasto-editar="gastoEditando"
-      @cerrar="cerrarFormulario"
-      @guardar="guardarGasto"
-    />
+      <ModalConfirmacion
+        :visible="confirmacion.visible"
+        :titulo="confirmacion.titulo"
+        :mensaje="confirmacion.mensaje"
+        :confirmar-texto="confirmacion.confirmarTexto"
+        @confirmar="confirmacion.onConfirmar()"
+        @cancelar="confirmacion.visible = false"
+      />
 
-    <ModalConfirmacion
-      :visible="confirmacion.visible"
-      :titulo="confirmacion.titulo"
-      :mensaje="confirmacion.mensaje"
-      :confirmar-texto="confirmacion.confirmarTexto"
-      @confirmar="confirmacion.onConfirmar()"
-      @cancelar="confirmacion.visible = false"
-    />
-
-    <ToastNotificacion
-      :visible="toast.visible"
-      :mensaje="toast.mensaje"
-      :tipo="toast.tipo"
-    />
-  </div>
+      <ToastNotificacion
+        :visible="toast.visible"
+        :mensaje="toast.mensaje"
+        :tipo="toast.tipo"
+      />
+    </div>
+  </EstadoDatos>
 </template>
 
 <style scoped>
@@ -319,6 +339,12 @@ function limpiarGastos() {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.btn-clear-list:disabled,
+.fab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-clear-list {

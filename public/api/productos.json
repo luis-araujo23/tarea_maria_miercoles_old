@@ -1,0 +1,51 @@
+[
+  {
+    "id": "p1",
+    "nombre": "Resma de hojas carta (500)",
+    "precio": 8.5,
+    "categoriaId": "papel",
+    "icono": "📄"
+  },
+  {
+    "id": "p2",
+    "nombre": "Caja de lápices y bolígrafos",
+    "precio": 6.5,
+    "categoriaId": "escritura",
+    "icono": "✏️"
+  },
+  {
+    "id": "p3",
+    "nombre": "Paquete de copias (80 hojas)",
+    "precio": 12.0,
+    "categoriaId": "copias",
+    "icono": "🖨️"
+  },
+  {
+    "id": "p4",
+    "nombre": "Alquiler de videobeam (1 día)",
+    "precio": 25.0,
+    "categoriaId": "equipo",
+    "icono": "💾"
+  },
+  {
+    "id": "p5",
+    "nombre": "Impresión de laboratorio (x4)",
+    "precio": 10.0,
+    "categoriaId": "laboratorio",
+    "icono": "🔬"
+  },
+  {
+    "id": "p6",
+    "nombre": "Cuaderno universitario 100 hojas",
+    "precio": 4.5,
+    "categoriaId": "cuadernos",
+    "icono": "📓"
+  },
+  {
+    "id": "p7",
+    "nombre": "Manual de Cálculo I (copia)",
+    "precio": 15.0,
+    "categoriaId": "libros",
+    "icono": "📚"
+  }
+]

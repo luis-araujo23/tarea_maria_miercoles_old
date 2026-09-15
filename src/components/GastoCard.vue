@@ -5,8 +5,10 @@ import { getAvatarColor, getInitials } from '../utils/avatars'
 import { etiquetaDivision } from '../utils/balances'
 import { getCategoryIcon } from '../utils/categorias'
 import { useAppStore } from '../composables/useAppStore'
+import { useTasaCambio } from '../composables/useTasaCambio'
 
 const { categorias } = useAppStore()
+const { cargando, disponible, formatearBolivares } = useTasaCambio()
 
 const props = defineProps<{
   gasto: Gasto
@@ -27,6 +29,8 @@ const fechaFormateada = computed(() => {
 const divisionTexto = computed(() =>
   etiquetaDivision(props.gasto.tipoDivision, props.gasto.divisiones, props.companeros)
 )
+
+const montoEnBolivares = computed(() => formatearBolivares(props.gasto.monto))
 </script>
 
 <template>
@@ -36,7 +40,14 @@ const divisionTexto = computed(() =>
         {{ getCategoryIcon(gasto.descripcion, categorias) }}
       </div>
       <div class="gasto-details">
-        <h3 class="gasto-title">{{ gasto.descripcion }}</h3>
+        <h3 class="gasto-title">
+          <router-link
+            :to="{ name: 'gasto-detalle', params: { id: String(gasto.id) } }"
+            class="gasto-link"
+          >
+            {{ gasto.descripcion }}
+          </router-link>
+        </h3>
         <p class="gasto-fecha">{{ fechaFormateada }}</p>
         <p class="gasto-division">{{ divisionTexto }}</p>
         <div class="gasto-meta">
@@ -55,8 +66,22 @@ const divisionTexto = computed(() =>
     </div>
 
     <div class="gasto-right">
-      <span class="monto">${{ gasto.monto.toFixed(2) }}</span>
+      <div class="monto-grupo">
+        <span class="monto">${{ gasto.monto.toFixed(2) }}</span>
+        <span v-if="disponible" class="monto-bs">{{ montoEnBolivares }}</span>
+        <span v-else-if="cargando" class="monto-bs placeholder">Bs …</span>
+      </div>
       <div class="gasto-actions">
+        <router-link
+          class="btn btn-ghost"
+          title="Ver detalle del gasto"
+          :to="{ name: 'gasto-detalle', params: { id: String(gasto.id) } }"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </router-link>
         <button
           class="btn btn-ghost"
           title="Editar gasto"
@@ -133,6 +158,16 @@ const divisionTexto = computed(() =>
   color: var(--color-heading);
 }
 
+.gasto-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.gasto-link:hover {
+  color: var(--ujap-blue);
+  text-decoration: underline;
+}
+
 .gasto-fecha {
   margin: 0 0 0.2rem;
   font-size: 0.75rem;
@@ -185,13 +220,30 @@ const divisionTexto = computed(() =>
   flex-shrink: 0;
 }
 
+.monto-grupo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 92px;
+}
+
 .monto {
   font-size: 1.05rem;
   font-weight: 700;
   color: var(--color-positive);
   font-variant-numeric: tabular-nums;
-  min-width: 72px;
   text-align: right;
+}
+
+.monto-bs {
+  font-size: 0.68rem;
+  color: var(--color-text-light);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.monto-bs.placeholder {
+  opacity: 0.6;
 }
 
 .gasto-actions {
@@ -214,6 +266,7 @@ const divisionTexto = computed(() =>
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
+  text-decoration: none;
   transition: background var(--transition), color var(--transition);
 }
 

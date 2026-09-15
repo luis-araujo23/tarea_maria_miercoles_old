@@ -1,10 +1,20 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useAppStore } from '../composables/useAppStore'
+import EstadoDatos from '../components/EstadoDatos.vue'
 import { getAvatarColor, getInitials } from '../utils/avatars'
 import { validarNombreCompanero } from '../utils/validaciones'
 
-const { companeros, nextCompaneroId } = useAppStore()
+const {
+  companeros,
+  cargando,
+  guardando,
+  error,
+  listo,
+  reintentar,
+  agregarCompanero,
+  eliminarCompanero,
+} = useAppStore()
 
 const nombreNuevo = ref('')
 const errorNombre = ref('')
@@ -20,84 +30,94 @@ function mostrarToast(mensaje: string, tipo: 'success' | 'error' | 'info' = 'suc
   }, 2800)
 }
 
-function agregar() {
+async function agregar() {
   errorNombre.value = ''
+
   const err = validarNombreCompanero(nombreNuevo.value)
   if (err) {
     errorNombre.value = err
     return
   }
-  if (companeros.value.some((c) => c.nombre.toLowerCase() === nombreNuevo.value.trim().toLowerCase())) {
-    errorNombre.value = 'Ese companero ya existe'
+
+  const nombre = nombreNuevo.value.trim()
+  // El duplicado y el resto de reglas los decide el servidor con su propia lista.
+  const fallo = await agregarCompanero(nombre)
+  if (fallo) {
+    errorNombre.value = fallo
     return
   }
-  const id = `c${nextCompaneroId.value++}`
-  companeros.value.push({ id, nombre: nombreNuevo.value.trim() })
-  mostrarToast(`${nombreNuevo.value.trim()} agregado al grupo`)
+
+  mostrarToast(`${nombre} agregado al grupo`)
   nombreNuevo.value = ''
 }
 
-function eliminar(id: string) {
+async function eliminar(id: string) {
   const nombre = companeros.value.find((c) => c.id === id)?.nombre ?? ''
 
-  if (companeros.value.length <= 1) {
-    mostrarToast('Debe quedar al menos un companero en el grupo', 'error')
-    return
-  }
-
-  companeros.value = companeros.value.filter((c) => c.id !== id)
-  mostrarToast(`${nombre} eliminado del grupo`)
+  const fallo = await eliminarCompanero(id)
+  mostrarToast(fallo ?? `${nombre} eliminado del grupo`, fallo ? 'error' : 'success')
 }
 </script>
 
 <template>
-  <div class="vista-companeros">
-    <div class="intro">
-      <h2>Companeros del grupo</h2>
-      <p>Administra quien participa en Calculo I — Semestre 2026.</p>
-    </div>
+  <EstadoDatos
+    :cargando="cargando"
+    :error="error"
+    :listo="listo"
+    @reintentar="reintentar"
+  >
+    <div class="vista-companeros">
+      <div class="intro">
+        <h2>Companeros del grupo</h2>
+        <p>Administra quien participa en Calculo I — Semestre 2026.</p>
+      </div>
 
-    <form class="add-form" @submit.prevent="agregar">
-      <input
-        v-model="nombreNuevo"
-        type="text"
-        placeholder="Nombre del companero"
-        aria-label="Nombre del companero"
-      />
-      <button type="submit" class="btn-add">Agregar</button>
-    </form>
-    <p v-if="errorNombre" class="error-nombre">{{ errorNombre }}</p>
-
-    <ul v-if="companeros.length" class="lista">
-      <li v-for="c in companeros" :key="c.id" class="item">
-        <div class="person">
-          <span
-            class="avatar"
-            :style="{ backgroundColor: getAvatarColor(c.nombre) }"
-          >
-            {{ getInitials(c.nombre) }}
-          </span>
-          <span class="nombre">{{ c.nombre }}</span>
-        </div>
-        <button
-          type="button"
-          class="btn-remove"
-          title="Eliminar companero"
-          @click="eliminar(c.id)"
-        >
-          Eliminar
+      <form class="add-form" @submit.prevent="agregar">
+        <input
+          v-model="nombreNuevo"
+          type="text"
+          placeholder="Nombre del companero"
+          aria-label="Nombre del companero"
+          :disabled="guardando"
+        />
+        <button type="submit" class="btn-add" :disabled="guardando">
+          {{ guardando ? 'Guardando…' : 'Agregar' }}
         </button>
-      </li>
-    </ul>
+      </form>
+      <p v-if="errorNombre" class="error-nombre">{{ errorNombre }}</p>
 
-    <div v-else class="empty">
-      <p>No hay companeros registrados. Agrega al menos uno para dividir gastos.</p>
-    </div>
+      <ul v-if="companeros.length" class="lista">
+        <li v-for="c in companeros" :key="c.id" class="item">
+          <div class="person">
+            <span
+              class="avatar"
+              :style="{ backgroundColor: getAvatarColor(c.nombre) }"
+            >
+              {{ getInitials(c.nombre) }}
+            </span>
+            <span class="nombre">{{ c.nombre }}</span>
+          </div>
+          <button
+            type="button"
+            class="btn-remove"
+            title="Eliminar companero"
+            :disabled="guardando"
+            @click="eliminar(c.id)"
+          >
+            Eliminar
+          </button>
+        </li>
+      </ul>
 
-    <div v-if="toast.visible" class="toast" :class="toast.tipo">
-      {{ toast.mensaje }}
+      <div v-else class="empty">
+        <p>No hay companeros registrados. Agrega al menos uno para dividir gastos.</p>
+      </div>
+
+      <div v-if="toast.visible" class="toast" :class="toast.tipo">
+        {{ toast.mensaje }}
+      </div>
     </div>
-  </div>
+  </EstadoDatos>
 </template>
 
 <style scoped>
@@ -202,9 +222,16 @@ function eliminar(id: string) {
   cursor: pointer;
 }
 
-.btn-remove:hover {
+.btn-remove:hover:not(:disabled) {
   background: var(--color-danger);
   color: white;
+}
+
+.add-form input:disabled,
+.btn-add:disabled,
+.btn-remove:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .empty {

@@ -25,17 +25,26 @@ const routes = [
     children: [
       {
         path: '',
-        redirect: '/app/gastos',
+        redirect: '/app/materiales',
+      },
+      {
+        path: 'app/dashboard',
+        name: 'dashboard',
+        component: () => import('../views/VistaDashboard.vue'),
+        meta: { requiereAdmin: true },
       },
       {
         path: 'app/gastos',
         name: 'gastos',
         component: () => import('../views/VistaGastos.vue'),
+        meta: { requiereAdmin: true },
       },
       {
-        path: 'app/companeros',
-        name: 'companeros',
-        component: () => import('../views/VistaCompaneros.vue'),
+        path: 'app/gastos/:id',
+        name: 'gasto-detalle',
+        component: () => import('../views/VistaDetalleGasto.vue'),
+        props: true,
+        meta: { requiereAdmin: true },
       },
       {
         path: 'app/materiales',
@@ -43,16 +52,15 @@ const routes = [
         component: () => import('../views/VistaMateriales.vue'),
       },
       {
-        path: 'app/pagos',
-        name: 'pagos',
-        component: () => import('../views/VistaPagos.vue'),
-      },
-      {
         path: 'app/balance',
         name: 'balance',
         component: () => import('../views/VistaBalance.vue'),
       },
     ],
+  },
+  {
+    path: '/:rutaNoEncontrada(.*)*',
+    redirect: '/app/materiales',
   },
 ]
 
@@ -62,15 +70,21 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  const { autenticado } = useAuth()
+  const { autenticado, esAdmin } = useAuth()
   const requiereAuth = to.matched.some((r) => r.meta.requiereAuth === true)
+  const requiereAdmin = to.matched.some((r) => r.meta.requiereAdmin === true)
+  const destinoInicio = esAdmin.value ? 'dashboard' : 'materiales'
 
   if (requiereAuth && !autenticado.value) {
     return { name: 'login' }
   }
 
+  if (requiereAdmin && !esAdmin.value) {
+    return { name: 'materiales' }
+  }
+
   if ((to.name === 'login' || to.name === 'signup') && autenticado.value) {
-    return { name: 'gastos' }
+    return { name: destinoInicio }
   }
 })
 

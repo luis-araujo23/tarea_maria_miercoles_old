@@ -44,6 +44,35 @@ export function calcularCuota(
   }
 }
 
+/** Cuánto le falta por cubrir de su parte en esa compra. */
+export function cuotaPendienteDeGasto(
+  gasto: Gasto,
+  deudorId: string,
+  pagos: Pago[],
+  companeros: Companero[]
+): number {
+  const cuota = calcularCuota(gasto, deudorId, companeros)
+  const pagado = pagos
+    .filter((p) => p.gastoId === gasto.id && p.deId === deudorId)
+    .reduce((acc, p) => acc + p.monto, 0)
+
+  return Math.max(0, Math.round((cuota - pagado) * 100) / 100)
+}
+
+export function deudasDeGasto(
+  gasto: Gasto,
+  pagos: Pago[],
+  companeros: Companero[]
+): DeudaSimplificada[] {
+  return gasto.divisiones
+    .map((d) => ({
+      deId: d.companeroId,
+      paraId: gasto.pagadoPorId,
+      monto: cuotaPendienteDeGasto(gasto, d.companeroId, pagos, companeros),
+    }))
+    .filter((d) => d.monto > 0.009)
+}
+
 export function calcularBalances(
   gastos: Gasto[],
   pagos: Pago[],

@@ -1,352 +1,580 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useAuth } from '../composables/useAuth'
 import { useAppStore } from '../composables/useAppStore'
-import { calcularBalances, simplificarDeudas } from '../utils/balances'
+import EstadoDatos from '../components/EstadoDatos.vue'
+import ToastNotificacion from '../components/ToastNotificacion.vue'
+import { calcularCuota, cuotaPendienteDeGasto } from '../utils/balances'
+import { companeroDeUsuario } from '../utils/perfil'
 import { getAvatarColor, getInitials } from '../utils/avatars'
+import { validarPagoDeCompra } from '../utils/validaciones'
 
 const { usuario } = useAuth()
-const { gastos, pagos, companeros, nombreCompanero } = useAppStore()
+const {
+  gastos,
+  pagos,
+  companeros,
+  productos,
+  cargando,
+  guardando,
+  error,
+  listo,
+  reintentar,
+  nombreCompanero,
+  agregarPago,
+} = useAppStore()
 
-const balances = computed(() =>
-  calcularBalances(gastos.value, pagos.value, companeros.value)
+const yo = computed(() => companeroDeUsuario(usuario.value, companeros.value))
+
+const detalle = computed(() => {
+  if (!yo.value) return []
+
+  return gastos.value
+    .filter(
+      (g) =>
+        g.productoId &&
+        (g.pagadoPorId === yo.value!.id ||
+          g.divisiones.some((d) => d.companeroId === yo.value!.id)),
+    )
+    .map((gasto) => {
+      const producto = productos.value.find((p) => p.id === gasto.productoId)
+      const miCuota = calcularCuota(gasto, yo.value!.id, companeros.value)
+      const yoOrganice = gasto.pagadoPorId === yo.value!.id
+      const leDebo = cuotaPendienteDeGasto(gasto, yo.value!.id, pagos.value, companeros.value)
+      const yaPague = pagos.value
+        .filter((p) => p.gastoId === gasto.id && p.deId === yo.value!.id)
+        .reduce((acc, p) => acc + p.monto, 0)
+      const avanceOtros = gasto.divisiones
+        .filter((d) => d.companeroId !== yo.value!.id)
+        .map((d) => {
+          const cuota = calcularCuota(gasto, d.companeroId, companeros.value)
+          const pagado = pagos.value
+            .filter((p) => p.gastoId === gasto.id && p.deId === d.companeroId)
+            .reduce((acc, p) => acc + p.monto, 0)
+          const pendiente = cuotaPendienteDeGasto(
+            gasto,
+            d.companeroId,
+            pagos.value,
+            companeros.value,
+          )
+          return {
+            id: d.companeroId,
+            cuota,
+            pagado: Math.round(pagado * 100) / 100,
+            pendiente,
+            porcentaje: cuota > 0 ? Math.min(100, (pagado / cuota) * 100) : 0,
+          }
+        })
+      const pendientesOtros = avanceOtros.filter((d) => d.pendiente > 0.009)
+      const misAbonos = pagos.value
+        .filter((p) => p.gastoId === gasto.id && p.deId === yo.value!.id)
+        .sort((a, b) => b.id - a.id)
+
+      return {
+        gasto,
+        nombre: producto?.nombre ?? gasto.descripcion,
+        icono: producto?.icono ?? '📦',
+        yoOrganice,
+        miCuota,
+        leDebo,
+        yaPague,
+        avanceOtros,
+        pendientesOtros,
+        misAbonos,
+      }
+    })
+})
+
+const debo = computed(() => detalle.value.filter((item) => item.leDebo > 0.009))
+const pendientesCompaneros = computed(() =>
+  detalle.value.filter((item) => item.avanceOtros.length > 0)
 )
 
-const deudasSimplificadas = computed(() => simplificarDeudas(balances.value))
-
-const miCompanero = computed(() => {
-  if (!usuario.value) return null
-  return companeros.value.find(
-    (c) => c.nombre.toLowerCase() === usuario.value!.nombre.toLowerCase()
-  )
-})
-
-const miBalance = computed(() => {
-  if (!miCompanero.value) return null
-  return balances.value.find((b) => b.companeroId === miCompanero.value!.id)
-})
-
-const leDebo = computed(() => {
-  if (!miCompanero.value) return []
-  return deudasSimplificadas.value.filter((d) => d.deId === miCompanero.value!.id)
-})
-
-const meDeben = computed(() => {
-  if (!miCompanero.value) return []
-  return deudasSimplificadas.value.filter((d) => d.paraId === miCompanero.value!.id)
-})
-
-const totalLeDebo = computed(() =>
-  leDebo.value.reduce((acc, d) => acc + d.monto, 0)
-)
-
+const totalDebo = computed(() => debo.value.reduce((acc, item) => acc + item.leDebo, 0))
 const totalMeDeben = computed(() =>
-  meDeben.value.reduce((acc, d) => acc + d.monto, 0)
+  pendientesCompaneros.value.reduce(
+    (acc, item) => acc + item.pendientesOtros.reduce((suma, d) => suma + d.pendiente, 0),
+    0,
+  )
 )
 
-const neto = computed(() => totalMeDeben.value - totalLeDebo.value)
+const montos = reactive<Record<number, number | ''>>({})
+const erroresPago = reactive<Record<number, string>>({})
+const toast = ref({ visible: false, mensaje: '', tipo: 'success' as 'success' | 'error' })
+
+async function registrarMiPago(gastoId: number, paraId: string, pendiente: number) {
+  if (!yo.value) return
+
+  const crudo = montos[gastoId]
+  const monto = typeof crudo === 'number' ? crudo : Number(crudo)
+  const err = validarPagoDeCompra(yo.value.id, paraId, monto, pendiente, companeros.value)
+  if (err) {
+    erroresPago[gastoId] = err
+    return
+  }
+
+  const fallo = await agregarPago({
+    deId: yo.value.id,
+    paraId,
+    monto,
+    gastoId,
+    nota: 'Abono de producto',
+  })
+  if (fallo) {
+    erroresPago[gastoId] = fallo
+    return
+  }
+
+  montos[gastoId] = ''
+  erroresPago[gastoId] = ''
+  const resto = Math.max(0, pendiente - monto)
+  toast.value = {
+    visible: true,
+    mensaje:
+      resto > 0.009
+        ? `Abono registrado. Te quedan $${resto.toFixed(2)}`
+        : 'Pago registrado. Esta deuda quedó saldada',
+    tipo: 'success',
+  }
+  setTimeout(() => {
+    toast.value.visible = false
+  }, 2800)
+}
 </script>
 
 <template>
-  <div class="vista-balance">
-    <div class="intro">
-      <h2>Mi balance</h2>
-      <p>Resumen de tus deudas y créditos en el grupo.</p>
-    </div>
-
-    <div v-if="!miCompanero" class="empty">
-      <p>No se encontró tu perfil de compañero. Asegúrate de que tu nombre coincida con un compañero del grupo.</p>
-    </div>
-
-    <template v-else>
-      <div class="mi-profile">
-        <span
-          class="avatar-lg"
-          :style="{ backgroundColor: getAvatarColor(miCompanero.nombre) }"
-        >
-          {{ getInitials(miCompanero.nombre) }}
-        </span>
-        <div class="profile-info">
-          <h3>{{ miCompanero.nombre }}</h3>
-          <span v-if="miBalance" class="profile-paid">Pagó ${{ miBalance.pagado.toFixed(2) }}</span>
+  <EstadoDatos
+    :cargando="cargando"
+    :error="error"
+    :listo="listo"
+    @reintentar="reintentar"
+  >
+    <div class="vista">
+      <header class="intro">
+        <div>
+          <h2>Mis deudas</h2>
+          <p>Solo tú puedes registrar los pagos de tu cuenta.</p>
         </div>
-        <span
-          v-if="miBalance"
-          class="balance-badge"
-          :class="miBalance.balance >= 0 ? 'positive' : 'negative'"
-        >
-          {{ miBalance.balance >= 0 ? '+' : '' }}${{ miBalance.balance.toFixed(2) }}
-        </span>
+      </header>
+
+      <div v-if="!yo" class="empty">
+        <p>No encontramos tu perfil. Pídele al admin que te agregue al grupo.</p>
       </div>
 
-      <div class="summary-cards">
-        <div class="summary-card red">
-          <span class="summary-label">Le debo</span>
-          <span class="summary-amount">${{ totalLeDebo.toFixed(2) }}</span>
-          <span class="summary-meta">{{ leDebo.length }} {{ leDebo.length === 1 ? 'deuda' : 'deudas' }}</span>
-        </div>
-        <div class="summary-card green">
-          <span class="summary-label">Me deben</span>
-          <span class="summary-amount">${{ totalMeDeben.toFixed(2) }}</span>
-          <span class="summary-meta">{{ meDeben.length }} {{ meDeben.length === 1 ? 'deuda' : 'deudas' }}</span>
-        </div>
-        <div class="summary-card" :class="neto >= 0 ? 'green' : 'red'">
-          <span class="summary-label">Neto</span>
-          <span class="summary-amount">{{ neto >= 0 ? '+' : '' }}${{ neto.toFixed(2) }}</span>
-          <span class="summary-meta">{{ neto >= 0 ? 'A tu favor' : 'Debes' }}</span>
-        </div>
-      </div>
+      <template v-else>
+        <section class="resumen">
+          <article class="kpi debe">
+            <span>Debo</span>
+            <strong>${{ totalDebo.toFixed(2) }}</strong>
+          </article>
+          <article class="kpi haber">
+            <span>Pendiente de otros</span>
+            <strong>${{ totalMeDeben.toFixed(2) }}</strong>
+          </article>
+        </section>
 
-      <div v-if="leDebo.length > 0" class="section">
-        <h3 class="section-title">A quiénes les debo</h3>
-        <ul class="debt-list">
-          <li v-for="(deuda, i) in leDebo" :key="i" class="debt-item negative">
-            <div class="debt-person">
-              <span
-                class="avatar"
-                :style="{ backgroundColor: getAvatarColor(nombreCompanero(deuda.paraId)) }"
-              >
-                {{ getInitials(nombreCompanero(deuda.paraId)) }}
+        <section class="bloque">
+          <h3>Lo que debo pagar</h3>
+
+          <div v-if="debo.length === 0" class="empty suave">
+            No tienes deudas pendientes de productos.
+          </div>
+
+          <article v-for="item in debo" :key="item.gasto.id" class="card">
+            <div class="card-top">
+              <span class="icono">{{ item.icono }}</span>
+              <div class="card-info">
+                <h4>{{ item.nombre }}</h4>
+                <p>
+                  {{ item.yoOrganice ? 'Tú registraste la compra' : `La registró ${nombreCompanero(item.gasto.pagadoPorId)}` }}
+                  · tu parte ${{ item.miCuota.toFixed(2) }}
+                </p>
+              </div>
+              <span class="estado" :class="item.leDebo > 0 ? 'pendiente' : 'saldado'">
+                {{ item.leDebo > 0 ? `Pendiente $${item.leDebo.toFixed(2)}` : 'Saldado' }}
               </span>
-              <span class="debt-name">{{ nombreCompanero(deuda.paraId) }}</span>
             </div>
-            <span class="debt-amount">-${{ deuda.monto.toFixed(2) }}</span>
-          </li>
-        </ul>
-      </div>
 
-      <div v-if="meDeben.length > 0" class="section">
-        <h3 class="section-title">Quiénes me deben</h3>
-        <ul class="debt-list">
-          <li v-for="(deuda, i) in meDeben" :key="i" class="debt-item positive">
-            <div class="debt-person">
-              <span
-                class="avatar"
-                :style="{ backgroundColor: getAvatarColor(nombreCompanero(deuda.deId)) }"
-              >
-                {{ getInitials(nombreCompanero(deuda.deId)) }}
-              </span>
-              <span class="debt-name">{{ nombreCompanero(deuda.deId) }}</span>
+            <div class="barra">
+              <div
+                class="barra-lleno"
+                :style="{ width: `${item.miCuota > 0 ? Math.min(100, (item.yaPague / item.miCuota) * 100) : 0}%` }"
+              />
             </div>
-            <span class="debt-amount">+${{ deuda.monto.toFixed(2) }}</span>
-          </li>
-        </ul>
-      </div>
+            <p class="progreso">
+              Abonado ${{ item.yaPague.toFixed(2) }} de ${{ item.miCuota.toFixed(2) }}
+            </p>
 
-      <div v-if="leDebo.length === 0 && meDeben.length === 0 && gastos.length > 0" class="settled">
-        <span>✓</span> ¡Estás a mano con todos!
-      </div>
+            <form
+              v-if="item.leDebo > 0"
+              class="abono"
+              @submit.prevent="registrarMiPago(item.gasto.id, yo!.id, item.leDebo)"
+            >
+              <label>
+                Monto a abonar
+                <input
+                  v-model.number="montos[item.gasto.id]"
+                  type="number"
+                  min="0.01"
+                  :max="item.leDebo"
+                  step="0.01"
+                  :placeholder="item.leDebo.toFixed(2)"
+                  :disabled="guardando"
+                />
+              </label>
+              <button type="submit" class="btn" :disabled="guardando">
+                {{ guardando ? 'Guardando…' : 'Registrar mi pago' }}
+              </button>
+            </form>
+            <p v-if="erroresPago[item.gasto.id]" class="error">{{ erroresPago[item.gasto.id] }}</p>
 
-      <div v-if="gastos.length === 0" class="empty">
-        <p>No hay gastos registrados aún. Registra gastos para ver tu balance.</p>
-      </div>
-    </template>
-  </div>
+            <ul v-if="item.misAbonos.length" class="historial">
+              <li v-for="pago in item.misAbonos" :key="pago.id">
+                Tú abonaste ${{ pago.monto.toFixed(2) }}
+                <time>{{ pago.fecha }}</time>
+              </li>
+            </ul>
+          </article>
+        </section>
+
+        <section class="bloque">
+          <h3>Pendiente por parte de tus compañeros</h3>
+          <p class="nota">Cada uno paga su parte desde su propia cuenta. Aquí solo ves lo que les falta.</p>
+
+          <div v-if="pendientesCompaneros.length === 0" class="empty suave">
+            Aún no hay otras personas en tus compras.
+          </div>
+
+          <article v-for="item in pendientesCompaneros" :key="item.gasto.id" class="card">
+            <div class="card-top">
+              <span class="icono">{{ item.icono }}</span>
+              <div class="card-info">
+                <h4>{{ item.nombre }}</h4>
+                <p>Total ${{ item.gasto.monto.toFixed(2) }} · tu parte ya {{ item.leDebo > 0.009 ? 'está pendiente' : 'está pagada' }}</p>
+              </div>
+            </div>
+
+            <ul class="deudores">
+              <li v-for="persona in item.avanceOtros" :key="persona.id">
+                <span
+                  class="avatar"
+                  :style="{ backgroundColor: getAvatarColor(nombreCompanero(persona.id)) }"
+                >
+                  {{ getInitials(nombreCompanero(persona.id)) }}
+                </span>
+                <div class="avance">
+                  <div class="avance-top">
+                    <span class="nombre">{{ nombreCompanero(persona.id) }}</span>
+                    <span class="monto" :class="{ ok: persona.pendiente <= 0.009 }">
+                      {{ persona.pendiente <= 0.009 ? 'Pagó su parte' : `Pendiente $${persona.pendiente.toFixed(2)}` }}
+                    </span>
+                  </div>
+                  <div class="barra">
+                    <div class="barra-lleno" :style="{ width: `${persona.porcentaje}%` }" />
+                  </div>
+                  <p class="progreso">
+                    Ha pagado ${{ persona.pagado.toFixed(2) }} de ${{ persona.cuota.toFixed(2) }}
+                  </p>
+                </div>
+              </li>
+            </ul>
+          </article>
+        </section>
+      </template>
+
+      <ToastNotificacion :visible="toast.visible" :mensaje="toast.mensaje" :tipo="toast.tipo" />
+    </div>
+  </EstadoDatos>
 </template>
 
 <style scoped>
-.vista-balance {
-  background: var(--color-bg-card);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border-light);
-  padding: 1.5rem;
+.vista {
+  max-width: 760px;
 }
 
-.intro h2 {
-  margin: 0 0 0.35rem;
-  font-size: 1.25rem;
-  color: var(--color-heading);
-}
-
-.intro p {
-  margin: 0 0 1.25rem;
-  color: var(--color-text-muted);
-  font-size: 0.9rem;
-}
-
-.mi-profile {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1.25rem;
-  background: linear-gradient(135deg, var(--ujap-blue) 0%, var(--ujap-blue-light) 100%);
-  border-radius: var(--radius-md);
-  color: white;
+.intro {
   margin-bottom: 1.25rem;
 }
 
-.avatar-lg {
-  width: 52px;
-  height: 52px;
-  border-radius: var(--radius-full);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: white;
-  flex-shrink: 0;
+.intro h2 {
+  margin: 0 0 0.3rem;
+  font-size: 1.4rem;
+  color: var(--color-heading);
 }
 
-.profile-info {
-  flex: 1;
-}
-
-.profile-info h3 {
+.intro p,
+.nota,
+.progreso {
   margin: 0;
-  font-size: 1.15rem;
-  font-weight: 700;
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
 }
 
-.profile-paid {
-  font-size: 0.8rem;
-  opacity: 0.85;
-}
-
-.balance-badge {
-  font-size: 1.5rem;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.summary-cards {
+.resumen {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
   margin-bottom: 1.5rem;
 }
 
-.summary-card {
-  padding: 1rem;
-  background: var(--color-bg-muted);
+.kpi {
+  padding: 1rem 1.1rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-light);
-  text-align: center;
+  background: var(--color-bg-card);
 }
 
-.summary-label {
+.kpi span {
   display: block;
   font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-muted);
-  margin-bottom: 0.35rem;
-}
-
-.summary-amount {
-  display: block;
-  font-size: 1.35rem;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.summary-card.red .summary-amount {
-  color: var(--color-danger);
-}
-
-.summary-card.green .summary-amount {
-  color: var(--color-positive);
-}
-
-.summary-meta {
-  display: block;
-  margin-top: 0.25rem;
-  font-size: 0.72rem;
-  color: var(--color-text-light);
-}
-
-.section {
-  margin-bottom: 1.5rem;
-}
-
-.section-title {
-  margin: 0 0 0.75rem;
-  font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-muted);
 }
 
-.debt-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
+.kpi strong {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 1.55rem;
 }
 
-.debt-item {
+.kpi.debe strong {
+  color: var(--color-danger);
+}
+
+.kpi.haber strong {
+  color: var(--color-positive);
+}
+
+.bloque {
+  margin-bottom: 1.75rem;
+}
+
+.bloque h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  color: var(--color-heading);
+}
+
+.nota {
+  margin-bottom: 0.85rem;
+}
+
+.card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.1rem;
+  margin-bottom: 0.75rem;
+}
+
+.card-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem;
+  gap: 0.75rem;
+}
+
+.icono {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
   background: var(--color-bg-muted);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-light);
+  font-size: 1.25rem;
 }
 
-.debt-person {
+.card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-info h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.card-info p {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.estado {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.estado.pendiente {
+  color: var(--color-danger);
+  background: #fef2f2;
+}
+
+.estado.saldado {
+  color: var(--color-positive);
+  background: #ecfdf3;
+}
+
+.barra {
+  height: 6px;
+  margin: 0.85rem 0 0.35rem;
+  background: var(--color-border-light);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.barra-lleno {
+  height: 100%;
+  background: var(--ujap-blue);
+}
+
+.abono {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.6rem;
+  align-items: end;
+  margin-top: 0.9rem;
+}
+
+.abono label {
   display: flex;
-  align-items: center;
-  gap: 0.65rem;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.abono input {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.btn {
+  padding: 0.58rem 0.95rem;
+  background: var(--ujap-blue);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+}
+
+.error {
+  margin: 0.45rem 0 0;
+  color: var(--color-danger);
+  font-size: 0.8rem;
+}
+
+.historial {
+  list-style: none;
+  margin: 0.85rem 0 0;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.historial li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.deudores {
+  list-style: none;
+  margin: 0.85rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.deudores li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.avance {
+  flex: 1;
+  min-width: 0;
+}
+
+.avance-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.avance .barra {
+  margin: 0.4rem 0 0.25rem;
 }
 
 .avatar {
   width: 32px;
   height: 32px;
-  border-radius: var(--radius-full);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.7rem;
-  font-weight: 700;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
   color: white;
+  font-size: 0.68rem;
+  font-weight: 700;
   flex-shrink: 0;
 }
 
-.debt-name {
-  font-size: 0.9rem;
+.nombre {
   font-weight: 600;
-  color: var(--color-heading);
 }
 
-.debt-amount {
-  font-size: 0.95rem;
+.monto {
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  color: var(--ujap-blue);
+  font-size: 0.82rem;
 }
 
-.debt-item.negative .debt-amount {
-  color: var(--color-danger);
-}
-
-.debt-item.positive .debt-amount {
+.monto.ok {
   color: var(--color-positive);
 }
 
-.settled {
-  padding: 1.5rem;
-  text-align: center;
+.ok {
   color: var(--color-positive);
   font-weight: 600;
-  font-size: 0.95rem;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-muted);
 }
 
 .empty {
+  padding: 2rem 1rem;
   text-align: center;
-  padding: 2.5rem 1rem;
-  color: var(--color-text-muted);
   border: 2px dashed var(--color-border);
   border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  background: var(--color-bg-card);
 }
 
-@media (max-width: 600px) {
-  .summary-cards {
+.empty.suave {
+  padding: 1rem;
+  font-size: 0.88rem;
+}
+
+@media (max-width: 560px) {
+  .resumen,
+  .abono {
     grid-template-columns: 1fr;
+  }
+
+  .card-top {
+    flex-wrap: wrap;
   }
 }
 </style>

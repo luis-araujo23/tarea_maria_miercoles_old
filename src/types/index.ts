@@ -1,6 +1,6 @@
 export type TipoDivision = 'igual' | 'porcentaje' | 'exacto'
 
-export type VistaApp = 'gastos' | 'companeros' | 'materiales' | 'pagos' | 'balance'
+export type VistaApp = 'gastos' | 'materiales' | 'balance'
 
 export interface Companero {
   id: string
@@ -12,6 +12,14 @@ export interface DivisionParticipante {
   valor: number
 }
 
+export interface Producto {
+  id: string
+  nombre: string
+  precio: number
+  categoriaId: string
+  icono: string
+}
+
 export interface Gasto {
   id: number
   descripcion: string
@@ -20,6 +28,8 @@ export interface Gasto {
   fecha: string
   tipoDivision: TipoDivision
   divisiones: DivisionParticipante[]
+  /** Presente cuando el gasto nació de una compra en Materiales. */
+  productoId?: string
 }
 
 export interface Pago {
@@ -29,6 +39,8 @@ export interface Pago {
   monto: number
   fecha: string
   nota?: string
+  /** Si existe, el pago salda la deuda de esa compra concreta. */
+  gastoId?: number
 }
 
 export interface DeudaSimplificada {
@@ -51,9 +63,21 @@ export interface CategoriaMaterial {
   keywords: string[]
 }
 
+export type RolUsuario = 'admin' | 'usuario'
+
 export interface Usuario {
   nombre: string
+  apellido: string
   email: string
+  rol: RolUsuario
+}
+
+export interface TasaCambio {
+  /** Bolivares por 1 USD. */
+  valor: number
+  /** Fecha ISO en que el proveedor publico la tasa. */
+  actualizado: string
+  proveedor: string
 }
 
 export interface AppState {
@@ -61,4 +85,5 @@ export interface AppState {
   gastos: Gasto[]
   pagos: Pago[]
   categorias: CategoriaMaterial[]
+  productos: Producto[]
 }

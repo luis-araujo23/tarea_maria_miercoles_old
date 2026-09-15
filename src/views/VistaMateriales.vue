@@ -1,229 +1,391 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { CategoriaMaterial } from '../types'
+import type { Producto } from '../types'
+import { useAuth } from '../composables/useAuth'
 import { useAppStore } from '../composables/useAppStore'
-import { getCategoriaId } from '../utils/categorias'
-import ModalConfirmacion from '../components/ModalConfirmacion.vue'
+import EstadoDatos from '../components/EstadoDatos.vue'
 import ToastNotificacion from '../components/ToastNotificacion.vue'
+import type { UsuarioPublico } from '../composables/useAuth'
+import { companeroDeUsuario, companeroPorNombre } from '../utils/perfil'
+import { validarCompra, validarProducto } from '../utils/validaciones'
 
-const { gastos, categorias, agregarCategoria, editarCategoria, eliminarCategoria } = useAppStore()
+const { usuario, esAdmin, listarUsuarios } = useAuth()
+const {
+  companeros,
+  categorias,
+  productos,
+  gastos,
+  cargando,
+  guardando,
+  error,
+  listo,
+  reintentar,
+  comprarProducto,
+  agregarCompanero,
+  guardarProducto,
+  eliminarProducto,
+} = useAppStore()
 
-const showToast = ref(false)
-const toastMsg = ref('')
-const toastTipo = ref<'success' | 'error' | 'info'>('success')
+const toast = ref({ visible: false, mensaje: '', tipo: 'success' as 'success' | 'error' | 'info' })
+let toastTimer: ReturnType<typeof setTimeout> | null = null
 
-function showSuccess(msg: string) {
-  toastMsg.value = msg
-  toastTipo.value = 'success'
-  showToast.value = true
-  setTimeout(() => { showToast.value = false }, 2800)
+function mostrarToast(mensaje: string, tipo: 'success' | 'error' | 'info' = 'success') {
+  toast.value = { visible: true, mensaje, tipo }
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    toast.value.visible = false
+  }, 2800)
 }
 
-function showError(msg: string) {
-  toastMsg.value = msg
-  toastTipo.value = 'error'
-  showToast.value = true
-  setTimeout(() => { showToast.value = false }, 2800)
+const yo = computed(() => companeroDeUsuario(usuario.value, companeros.value))
+
+const nombreCategoria = (id: string) =>
+  categorias.value.find((c) => c.id === id)?.nombre ?? 'Otros materiales'
+
+const comprasDelProducto = (id: string) =>
+  gastos.value.filter((g) => g.productoId === id).length
+
+const productoComprando = ref<Producto | null>(null)
+const invitados = ref<UsuarioPublico[]>([])
+const busqueda = ref('')
+const errorCompra = ref('')
+
+function abrirCompra(producto: Producto) {
+  if (!yo.value) {
+    mostrarToast('No encontramos tu perfil de compañero. El admin debe agregarte al grupo.', 'error')
+    return
+  }
+  productoComprando.value = producto
+  invitados.value = []
+  busqueda.value = ''
+  errorCompra.value = ''
 }
 
-const resumen = computed(() => {
-  const totales: Record<string, { total: number; count: number }> = {}
+function cerrarCompra() {
+  productoComprando.value = null
+  invitados.value = []
+  busqueda.value = ''
+  errorCompra.value = ''
+}
 
-  categorias.value.forEach((cat) => {
-    totales[cat.id] = { total: 0, count: 0 }
+function esElMismoUsuario(cuenta: UsuarioPublico): boolean {
+  if (!usuario.value) return false
+  return cuenta.email.toLowerCase() === usuario.value.email.toLowerCase()
+}
+
+const resultadosBusqueda = computed(() => {
+  const q = busqueda.value.trim().toLowerCase()
+  if (q.length < 1) return []
+
+  return listarUsuarios().filter((cuenta) => {
+    if (esElMismoUsuario(cuenta)) return false
+    if (invitados.value.some((i) => i.email === cuenta.email)) return false
+    return (
+      cuenta.nombreVisible.toLowerCase().includes(q) ||
+      cuenta.email.toLowerCase().includes(q) ||
+      cuenta.nombre.toLowerCase().includes(q)
+    )
   })
-
-  gastos.value.forEach((gasto) => {
-    const catId = getCategoriaId(gasto.descripcion, categorias.value)
-    if (!totales[catId]) {
-      totales[catId] = { total: 0, count: 0 }
-    }
-    totales[catId]!.total += gasto.monto
-    totales[catId]!.count += 1
-  })
-
-  return categorias.value.map((cat) => ({
-    ...cat,
-    total: totales[cat.id]?.total ?? 0,
-    count: totales[cat.id]?.count ?? 0,
-  }))
 })
 
-const totalGeneral = computed(() =>
-  gastos.value.reduce((acc, g) => acc + g.monto, 0)
-)
+function agregarInvitado(cuenta: UsuarioPublico) {
+  if (invitados.value.some((i) => i.email === cuenta.email)) return
+  invitados.value = [...invitados.value, cuenta]
+  busqueda.value = ''
+  errorCompra.value = ''
+}
+
+function quitarInvitado(email: string) {
+  invitados.value = invitados.value.filter((i) => i.email !== email)
+}
+
+const cuotaEstimada = computed(() => {
+  const producto = productoComprando.value
+  if (!producto) return 0
+  return producto.precio / (invitados.value.length + 1)
+})
+
+async function idDeInvitado(cuenta: UsuarioPublico): Promise<string | null> {
+  const existente = companeroPorNombre(cuenta.nombreVisible, companeros.value)
+  if (existente) return existente.id
+
+  const fallo = await agregarCompanero(cuenta.nombreVisible)
+  if (fallo) {
+    errorCompra.value = fallo
+    return null
+  }
+
+  return companeroPorNombre(cuenta.nombreVisible, companeros.value)?.id ?? null
+}
+
+async function confirmarCompra() {
+  const producto = productoComprando.value
+  if (!producto || !yo.value) return
+
+  if (invitados.value.length === 0) {
+    errorCompra.value = 'Busca y agrega al menos un usuario registrado para dividir el gasto'
+    return
+  }
+
+  const ids = [yo.value.id]
+  for (const invitado of invitados.value) {
+    const id = await idDeInvitado(invitado)
+    if (!id) return
+    ids.push(id)
+  }
+
+  const err = validarCompra(
+    producto.id,
+    yo.value.id,
+    ids,
+    productos.value,
+    companeros.value,
+  )
+  if (err) {
+    errorCompra.value = err
+    return
+  }
+
+  const fallo = await comprarProducto({
+    productoId: producto.id,
+    pagadoPorId: yo.value.id,
+    participanteIds: ids,
+  })
+  if (fallo) {
+    errorCompra.value = fallo
+    return
+  }
+
+  mostrarToast(
+    `Compraste ${producto.nombre}. El pago se dividió entre ${ids.length} personas.`,
+  )
+  cerrarCompra()
+}
 
 const showForm = ref(false)
-const editando = ref<CategoriaMaterial | null>(null)
+const editando = ref<Producto | null>(null)
 const formNombre = ref('')
-const formIcono = ref('📎')
-const formKeywords = ref('')
+const formPrecio = ref<number | ''>('')
+const formCategoria = ref('')
+const formIcono = ref('📦')
+const errorForm = ref('')
 
-const ICONOS = ['📎', '🖨️', '📄', '✏️', '📓', '📚', '💾', '🔬', '🎒', '📐', '🧮', 'Calculator', '🎨', '🔧', '📦', '💡']
+const ICONOS = ['📄', '✏️', '🖨️', '📓', '📚', '💾', '🔬', '📎', '🎒', '📦']
 
-function abrirForm(cat?: CategoriaMaterial) {
-  editando.value = cat ?? null
-  formNombre.value = cat?.nombre ?? ''
-  formIcono.value = cat?.icono ?? '📎'
-  formKeywords.value = cat?.keywords.join(', ') ?? ''
+function abrirForm(producto?: Producto) {
+  editando.value = producto ?? null
+  formNombre.value = producto?.nombre ?? ''
+  formPrecio.value = producto?.precio ?? ''
+  formCategoria.value = producto?.categoriaId ?? categorias.value[0]?.id ?? ''
+  formIcono.value = producto?.icono ?? '📦'
+  errorForm.value = ''
   showForm.value = true
 }
 
 function cerrarForm() {
   showForm.value = false
   editando.value = null
-  formNombre.value = ''
-  formIcono.value = '📎'
-  formKeywords.value = ''
 }
 
-function guardarCategoria() {
-  const nombre = formNombre.value.trim()
-  if (!nombre) {
-    showError('Ingresa un nombre para la categoría')
+async function guardarFormProducto() {
+  const datos = {
+    nombre: formNombre.value,
+    precio: typeof formPrecio.value === 'number' ? formPrecio.value : NaN,
+    categoriaId: formCategoria.value,
+    icono: formIcono.value,
+  }
+  const err = validarProducto(datos, categorias.value, productos.value, editando.value?.id)
+  if (err) {
+    errorForm.value = err
     return
   }
 
-  const keywords = formKeywords.value
-    .split(',')
-    .map((k) => k.trim().toLowerCase())
-    .filter((k) => k.length > 0)
-
-  if (editando.value) {
-    editarCategoria(editando.value.id, {
-      nombre,
-      icono: formIcono.value,
-      keywords,
-    })
-    showSuccess('Categoría actualizada')
-  } else {
-    agregarCategoria({ nombre, icono: formIcono.value, keywords })
-    showSuccess('Categoría creada')
+  const fallo = await guardarProducto(datos, editando.value?.id)
+  if (fallo) {
+    errorForm.value = fallo
+    return
   }
+
+  mostrarToast(editando.value ? 'Producto actualizado' : 'Producto publicado')
   cerrarForm()
 }
 
-const confirmacion = ref({
-  visible: false,
-  titulo: '',
-  mensaje: '',
-  onConfirmar: () => {},
-})
-
-function solicitarEliminar(cat: CategoriaMaterial) {
-  const gastosAsociados = gastos.value.filter(
-    (g) => getCategoriaId(g.descripcion, categorias.value) === cat.id
-  ).length
-
-  confirmacion.value = {
-    visible: true,
-    titulo: 'Eliminar categoría',
-    mensaje: gastosAsociados > 0
-      ? `¿Eliminar "${cat.nombre}"? Hay ${gastosAsociados} gasto(s) asociados. Pasarán a "Otros materiales".`
-      : `¿Eliminar "${cat.nombre}"? Esta acción no se puede deshacer.`,
-    onConfirmar: () => {
-      eliminarCategoria(cat.id)
-      showSuccess('Categoría eliminada')
-      confirmacion.value.visible = false
-    },
-  }
+async function quitarProducto(id: string) {
+  const fallo = await eliminarProducto(id)
+  mostrarToast(fallo ?? 'Producto eliminado', fallo ? 'error' : 'success')
 }
 </script>
 
 <template>
-  <div class="vista-materiales">
-    <div class="intro">
-      <h2>Resumen por material</h2>
-      <p>Gastos universitarios agrupados por categoría.</p>
-      <button type="button" class="btn-add" @click="abrirForm()">+ Nueva categoría</button>
-    </div>
-
-    <div v-if="resumen.length" class="grid">
-      <article v-for="cat in resumen" :key="cat.id" class="card">
-        <div class="card-top">
-          <span class="icono">{{ cat.icono }}</span>
-          <div>
-            <h3>{{ cat.nombre }}</h3>
-            <span class="count">{{ cat.count }} {{ cat.count === 1 ? 'gasto' : 'gastos' }}</span>
-          </div>
-          <div class="card-actions">
-            <button type="button" class="btn-icon" title="Editar" @click="abrirForm(cat)">✏️</button>
-            <button type="button" class="btn-icon btn-danger" title="Eliminar" @click="solicitarEliminar(cat)">🗑️</button>
-          </div>
+  <EstadoDatos
+    :cargando="cargando"
+    :error="error"
+    :listo="listo"
+    @reintentar="reintentar"
+  >
+    <div class="vista">
+      <div class="intro">
+        <div>
+          <h2>Materiales a la venta</h2>
+          <p>
+            {{ esAdmin
+              ? 'Administra el catálogo. Los usuarios compran y eligen con quién dividir.'
+              : 'Elige un producto y con quién lo vas a pagar. El costo se divide en partes iguales.' }}
+          </p>
         </div>
-        <div class="card-bottom">
-          <span class="total">${{ cat.total.toFixed(2) }}</span>
-          <span class="pct">
-            {{ totalGeneral > 0 ? Math.round((cat.total / totalGeneral) * 100) : 0 }}% del total
-          </span>
-        </div>
-        <div class="bar">
-          <div
-            class="bar-fill"
-            :style="{ width: `${totalGeneral > 0 ? (cat.total / totalGeneral) * 100 : 0}%` }"
-          />
-        </div>
-      </article>
-    </div>
+        <button v-if="esAdmin" type="button" class="btn-add" :disabled="guardando" @click="abrirForm()">
+          + Nuevo producto
+        </button>
+      </div>
 
-    <div v-else class="empty">
-      <p>No hay categorías registradas aún. Agrega una para empezar.</p>
-    </div>
+      <p v-if="!esAdmin && !yo" class="aviso">
+        Tu cuenta aún no está ligada a un compañero del grupo. No podrás comprar hasta que te agreguen.
+      </p>
 
-    <div v-if="showForm" class="modal-overlay" @click.self="cerrarForm">
-      <div class="modal-card">
-        <h3>{{ editando ? 'Editar categoría' : 'Nueva categoría' }}</h3>
-        <form @submit.prevent="guardarCategoria">
-          <div class="field">
-            <label for="cat-nombre">Nombre</label>
-            <input id="cat-nombre" v-model="formNombre" type="text" placeholder="Ej: Impresiones" />
-          </div>
-          <div class="field">
-            <label>Ícono</label>
-            <div class="icon-grid">
-              <button
-                v-for="icon in ICONOS"
-                :key="icon"
-                type="button"
-                class="icon-btn"
-                :class="{ selected: formIcono === icon }"
-                @click="formIcono = icon"
-              >
-                {{ icon }}
-              </button>
+      <div v-if="productos.length" class="grid">
+        <article v-for="producto in productos" :key="producto.id" class="card">
+          <div class="card-top">
+            <span class="icono">{{ producto.icono }}</span>
+            <div>
+              <h3>{{ producto.nombre }}</h3>
+              <span class="meta">{{ nombreCategoria(producto.categoriaId) }}</span>
             </div>
           </div>
-          <div class="field">
-            <label for="cat-keywords">Palabras clave (separadas por coma)</label>
-            <input id="cat-keywords" v-model="formKeywords" type="text" placeholder="copia, impresión, xerox" />
+          <div class="card-bottom">
+            <span class="precio">${{ producto.precio.toFixed(2) }}</span>
+            <span class="meta">{{ comprasDelProducto(producto.id) }} ventas</span>
           </div>
-          <div class="form-actions">
-            <button type="button" class="btn-cancel" @click="cerrarForm">Cancelar</button>
-            <button type="submit" class="btn-save">{{ editando ? 'Guardar' : 'Crear' }}</button>
+          <div class="acciones">
+            <button
+              v-if="!esAdmin"
+              type="button"
+              class="btn-save"
+              :disabled="guardando || !yo"
+              @click="abrirCompra(producto)"
+            >
+              Comprar
+            </button>
+            <template v-else>
+              <button type="button" class="btn-cancel" :disabled="guardando" @click="abrirForm(producto)">
+                Editar
+              </button>
+              <button type="button" class="btn-danger" :disabled="guardando" @click="quitarProducto(producto.id)">
+                Quitar
+              </button>
+            </template>
           </div>
-        </form>
+        </article>
       </div>
+
+      <div v-else class="empty">
+        <p>No hay productos publicados todavía.</p>
+      </div>
+
+      <div v-if="productoComprando" class="overlay" @click.self="cerrarCompra">
+        <div class="modal">
+          <h3>Comprar {{ productoComprando.nombre }}</h3>
+          <p class="modal-sub">
+            El producto cuesta ${{ productoComprando.precio.toFixed(2) }}. Busca usuarios para dividir y cada uno paga su parte.
+          </p>
+
+          <label class="field">
+            Buscar usuario
+            <input
+              v-model="busqueda"
+              type="search"
+              placeholder="Nombre o correo"
+              :disabled="guardando"
+              autocomplete="off"
+            />
+          </label>
+
+          <ul v-if="resultadosBusqueda.length" class="resultados">
+            <li v-for="cuenta in resultadosBusqueda" :key="cuenta.email">
+              <button type="button" class="resultado" :disabled="guardando" @click="agregarInvitado(cuenta)">
+                <span>
+                  <strong>{{ cuenta.nombreVisible }}</strong>
+                  <small>{{ cuenta.email }}</small>
+                </span>
+                <span>Agregar</span>
+              </button>
+            </li>
+          </ul>
+          <p v-else-if="busqueda.trim()" class="vacio-busqueda">
+            No hay usuarios que coincidan con “{{ busqueda.trim() }}”.
+          </p>
+
+          <div class="seleccion">
+            <span class="chip yo">Tú</span>
+            <span v-for="invitado in invitados" :key="invitado.email" class="chip">
+              {{ invitado.nombreVisible }}
+              <button type="button" class="chip-x" :disabled="guardando" @click="quitarInvitado(invitado.email)">
+                ×
+              </button>
+            </span>
+          </div>
+
+          <p class="cuota">Cada uno paga ${{ cuotaEstimada.toFixed(2) }}</p>
+          <p v-if="errorCompra" class="error">{{ errorCompra }}</p>
+          <div class="form-actions">
+            <button type="button" class="btn-cancel" :disabled="guardando" @click="cerrarCompra">Cancelar</button>
+            <button type="button" class="btn-save" :disabled="guardando" @click="confirmarCompra">
+              {{ guardando ? 'Comprando…' : 'Confirmar compra' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="showForm" class="overlay" @click.self="cerrarForm">
+        <div class="modal">
+          <h3>{{ editando ? 'Editar producto' : 'Nuevo producto' }}</h3>
+          <form @submit.prevent="guardarFormProducto">
+            <label class="field">
+              Nombre
+              <input v-model="formNombre" type="text" :disabled="guardando" />
+            </label>
+            <label class="field">
+              Precio (USD)
+              <input v-model.number="formPrecio" type="number" min="0.01" step="0.01" :disabled="guardando" />
+            </label>
+            <label class="field">
+              Categoría
+              <select v-model="formCategoria" :disabled="guardando">
+                <option v-for="cat in categorias" :key="cat.id" :value="cat.id">{{ cat.nombre }}</option>
+              </select>
+            </label>
+            <div class="field">
+              Ícono
+              <div class="icon-grid">
+                <button
+                  v-for="icon in ICONOS"
+                  :key="icon"
+                  type="button"
+                  class="icon-btn"
+                  :class="{ selected: formIcono === icon }"
+                  @click="formIcono = icon"
+                >
+                  {{ icon }}
+                </button>
+              </div>
+            </div>
+            <p v-if="errorForm" class="error">{{ errorForm }}</p>
+            <div class="form-actions">
+              <button type="button" class="btn-cancel" :disabled="guardando" @click="cerrarForm">Cancelar</button>
+              <button type="submit" class="btn-save" :disabled="guardando">
+                {{ guardando ? 'Guardando…' : 'Guardar' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <ToastNotificacion :visible="toast.visible" :mensaje="toast.mensaje" :tipo="toast.tipo" />
     </div>
-
-    <ModalConfirmacion
-      :visible="confirmacion.visible"
-      :titulo="confirmacion.titulo"
-      :mensaje="confirmacion.mensaje"
-      confirmar-texto="Eliminar"
-      @confirmar="confirmacion.onConfirmar()"
-      @cancelar="confirmacion.visible = false"
-    />
-
-    <ToastNotificacion
-      :visible="showToast"
-      :mensaje="toastMsg"
-      :tipo="toastTipo"
-    />
-  </div>
+  </EstadoDatos>
 </template>
 
 <style scoped>
-.vista-materiales {
+.vista {
   background: var(--color-bg-card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light);
@@ -232,58 +394,56 @@ function solicitarEliminar(cat: CategoriaMaterial) {
 
 .intro {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
   gap: 0.75rem;
+  flex-wrap: wrap;
   margin-bottom: 1.25rem;
 }
 
 .intro h2 {
-  margin: 0;
+  margin: 0 0 0.3rem;
   font-size: 1.25rem;
-  color: var(--color-heading);
 }
 
-.intro p {
+.intro p,
+.modal-sub,
+.meta,
+.cuota {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
 }
 
-.btn-add {
-  padding: 0.5rem 1rem;
-  background: var(--ujap-blue);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-weight: 600;
+.aviso,
+.error {
+  color: var(--color-danger);
   font-size: 0.85rem;
-  cursor: pointer;
-  font-family: inherit;
 }
 
-.btn-add:hover {
-  background: var(--ujap-blue-dark);
+.aviso {
+  padding: 0.75rem;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  background: #fef2f2;
+  margin-bottom: 1rem;
 }
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 1rem;
 }
 
 .card {
   padding: 1rem;
   background: var(--color-bg-muted);
-  border-radius: var(--radius-md);
   border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
 }
 
 .card-top {
   display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
+  gap: 0.7rem;
   margin-bottom: 0.75rem;
 }
 
@@ -294,79 +454,69 @@ function solicitarEliminar(cat: CategoriaMaterial) {
 .card-top h3 {
   margin: 0 0 0.15rem;
   font-size: 0.95rem;
-  color: var(--color-heading);
-}
-
-.count {
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-}
-
-.card-actions {
-  margin-left: auto;
-  display: flex;
-  gap: 0.25rem;
-}
-
-.btn-icon {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 0.85rem;
-  padding: 0.2rem;
-  border-radius: var(--radius-sm);
-  transition: background var(--transition);
-}
-
-.btn-icon:hover {
-  background: var(--color-border-light);
-}
-
-.btn-icon.btn-danger:hover {
-  background: rgba(210, 35, 42, 0.1);
 }
 
 .card-bottom {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 
-.total {
-  font-size: 1.25rem;
+.precio {
+  font-size: 1.2rem;
   font-weight: 800;
   color: var(--ujap-blue);
 }
 
-.pct {
-  font-size: 0.75rem;
-  color: var(--color-text-light);
+.acciones {
+  display: flex;
+  gap: 0.4rem;
 }
 
-.bar {
-  height: 4px;
-  background: var(--color-border-light);
-  border-radius: var(--radius-full);
-  overflow: hidden;
+.btn-add,
+.btn-save,
+.btn-cancel,
+.btn-danger {
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  font-family: inherit;
 }
 
-.bar-fill {
-  height: 100%;
-  background: var(--ujap-gold);
-  border-radius: var(--radius-full);
-  transition: width 0.3s ease;
+.btn-add,
+.btn-save {
+  background: var(--ujap-blue);
+  color: white;
+  border: none;
+}
+
+.btn-cancel {
+  background: white;
+  border: 1px solid var(--color-border);
+}
+
+.btn-danger {
+  background: transparent;
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .empty {
   text-align: center;
-  padding: 2.5rem 1rem;
-  color: var(--color-text-muted);
+  padding: 2rem;
   border: 2px dashed var(--color-border);
   border-radius: var(--radius-md);
+  color: var(--color-text-muted);
 }
 
-.modal-overlay {
+.overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.4);
@@ -376,97 +526,137 @@ function solicitarEliminar(cat: CategoriaMaterial) {
   z-index: 200;
 }
 
-.modal-card {
+.modal {
   background: var(--color-bg-card);
   border-radius: var(--radius-lg);
-  padding: 1.5rem;
+  padding: 1.4rem;
   width: 90%;
   max-width: 420px;
-  box-shadow: var(--shadow-lg);
 }
 
-.modal-card h3 {
-  margin: 0 0 1rem;
-  font-size: 1.1rem;
-  color: var(--color-heading);
+.modal h3 {
+  margin: 0 0 0.4rem;
+}
+
+.resultados {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+}
+
+.resultado {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  border: none;
+  border-bottom: 1px solid var(--color-border-light);
+  background: var(--color-bg-muted);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.resultado:last-child {
+  border-bottom: none;
+}
+
+.resultado small {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
+.vacio-busqueda {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.seleccion {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ujap-blue);
+  background: var(--color-primary-light);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+}
+
+.chip.yo {
+  color: white;
+  background: var(--ujap-blue);
+}
+
+.chip-x {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: inherit;
+}
+
+.cuota {
+  margin-bottom: 0.75rem;
+  font-weight: 600;
 }
 
 .field {
-  margin-bottom: 0.85rem;
-}
-
-.field label {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.75rem;
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--color-text-muted);
-  margin-bottom: 0.3rem;
 }
 
-.field input {
-  width: 100%;
-  padding: 0.6rem 0.75rem;
+.field input,
+.field select {
+  padding: 0.55rem 0.7rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   font-family: inherit;
-  font-size: 0.9rem;
-}
-
-.field input:focus {
-  outline: none;
-  border-color: var(--ujap-blue);
 }
 
 .icon-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.3rem;
 }
 
 .icon-btn {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 34px;
+  height: 34px;
   border: 2px solid var(--color-border-light);
   border-radius: var(--radius-sm);
   background: var(--color-bg-muted);
   cursor: pointer;
-  font-size: 1rem;
 }
 
 .icon-btn.selected {
   border-color: var(--ujap-blue);
-  background: var(--color-primary-light);
 }
 
 .form-actions {
   display: flex;
-  gap: 0.5rem;
   justify-content: flex-end;
-  margin-top: 1rem;
-}
-
-.btn-cancel,
-.btn-save {
-  padding: 0.5rem 1rem;
-  border-radius: var(--radius-sm);
-  font-weight: 600;
-  font-size: 0.85rem;
-  cursor: pointer;
-  border: none;
-  font-family: inherit;
-}
-
-.btn-cancel {
-  background: white;
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-}
-
-.btn-save {
-  background: var(--ujap-blue);
-  color: white;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
 }
 </style>
