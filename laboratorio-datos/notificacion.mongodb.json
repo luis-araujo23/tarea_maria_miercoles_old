@@ -1,0 +1,23 @@
+{
+  "_id": "notif_20260930_maria_g12",
+  "tipo": "abono_deuda",
+  "leida": false,
+  "creadaEn": "2026-09-30T20:11:00-04:00",
+  "destinatario": {
+    "usuarioEmail": "maria@ujap.edu.ve",
+    "nombreVisible": "María"
+  },
+  "contexto": {
+    "gastoId": 12,
+    "producto": "Caja de lápices",
+    "montoTotal": 2.0,
+    "cuota": 1.0
+  },
+  "evento": {
+    "quienPago": "Juan",
+    "montoAbonado": 0.5,
+    "pendienteTrasAbono": 0.5,
+    "porcentajeAvance": 50
+  },
+  "canal": ["in_app", "push"]
+}

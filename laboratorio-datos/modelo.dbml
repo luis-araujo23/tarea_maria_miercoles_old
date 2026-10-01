@@ -1,0 +1,60 @@
+// Pegar en https://dbdiagram.io
+// UJAP Split — diagrama entidad-relación (PostgreSQL)
+
+Table usuario {
+  id uuid [pk]
+  nombre varchar [not null]
+  apellido varchar [not null]
+  email varchar [unique, not null]
+  rol varchar [not null, note: 'admin | usuario']
+  creado_en timestamp [not null]
+}
+
+Table companero {
+  id varchar [pk]
+  usuario_id uuid [ref: > usuario.id]
+  nombre varchar [not null]
+}
+
+Table categoria {
+  id varchar [pk]
+  nombre varchar [not null]
+  icono varchar [not null]
+}
+
+Table producto {
+  id varchar [pk]
+  categoria_id varchar [not null, ref: > categoria.id]
+  nombre varchar [not null]
+  precio numeric [not null]
+  icono varchar [not null]
+}
+
+Table gasto {
+  id serial [pk]
+  descripcion varchar [not null]
+  monto numeric [not null]
+  pagado_por_id varchar [not null, ref: > companero.id]
+  producto_id varchar [ref: > producto.id]
+  fecha date [not null]
+  tipo_division varchar [not null, note: 'igual | porcentaje | exacto']
+}
+
+Table gasto_division {
+  gasto_id int [not null, ref: > gasto.id]
+  companero_id varchar [not null, ref: > companero.id]
+  valor numeric [not null]
+  indexes {
+    (gasto_id, companero_id) [pk]
+  }
+}
+
+Table pago {
+  id serial [pk]
+  de_id varchar [not null, ref: > companero.id]
+  para_id varchar [not null, ref: > companero.id]
+  gasto_id int [ref: > gasto.id]
+  monto numeric [not null]
+  fecha date [not null]
+  nota varchar
+}
