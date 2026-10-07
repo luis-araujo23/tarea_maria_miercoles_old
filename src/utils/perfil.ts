@@ -23,6 +23,14 @@ export function companeroDeUsuario(
   companeros: Companero[],
 ): Companero | null {
   if (!usuario) return null
+
+  // 1. Relación por FK: la más robusta.
+  if (usuario.companeroId) {
+    const porId = companeros.find((c) => c.id === usuario.companeroId)
+    if (porId) return porId
+  }
+
+  // 2. Fallback para sesiones antiguas o compañeros reasignados: por nombre.
   return companeros.find((c) => coincidenNombres(c.nombre, usuario.nombre)) ?? null
 }
 
