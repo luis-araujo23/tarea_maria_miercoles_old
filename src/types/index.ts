@@ -70,6 +70,8 @@ export interface Usuario {
   apellido: string
   email: string
   rol: RolUsuario
+  /** FK → Companero.id. Ausente en sesiones antiguas; se resuelve por nombre. */
+  companeroId?: string
 }
 
 export interface TasaCambio {
