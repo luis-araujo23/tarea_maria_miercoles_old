@@ -20,6 +20,13 @@ const CUENTAS_BASE: Cuenta[] = [
   { nombre: 'admin', apellido: '', email: 'admin@ujap.edu.ve', clave: CLAVE_ASIGNADA, rol: 'admin' },
 ]
 
+/** Mapa de cuentas base → Companero.id que garantiza la relación Usuario ↔ Companero. */
+const COMPANERO_DE_CUENTA: Record<string, string> = {
+  'maria@ujap.edu.ve': 'c1',
+  'juan@ujap.edu.ve': 'c2',
+  'carlos@ujap.edu.ve': 'c3',
+}
+
 export interface UsuarioPublico {
   nombre: string
   apellido: string
@@ -91,6 +98,7 @@ function sesionDeCuenta(cuenta: Cuenta): Usuario {
     apellido: cuenta.apellido,
     email: cuenta.email,
     rol: cuenta.rol,
+    companeroId: COMPANERO_DE_CUENTA[cuenta.email],
   }
 }
 
@@ -102,6 +110,8 @@ function cargarUsuario(cuentas: Cuenta[]): Usuario | null {
     const nombre = typeof parsed.nombre === 'string' ? parsed.nombre : ''
     const email = typeof parsed.email === 'string' ? parsed.email : ''
     const rol = parsed.rol === 'admin' || parsed.rol === 'usuario' ? parsed.rol : null
+    const companeroId =
+      typeof parsed.companeroId === 'string' ? parsed.companeroId : undefined
     const cuenta = cuentas.find(
       (c) =>
         (nombre && normalizarNombre(nombreVisible(c)) === normalizarNombre(nombre)) ||
@@ -109,7 +119,9 @@ function cargarUsuario(cuentas: Cuenta[]): Usuario | null {
         (email && normalizarEmail(c.email) === normalizarEmail(email)),
     )
     if (cuenta && rol === cuenta.rol) {
-      return sesionDeCuenta(cuenta)
+      const sesion = sesionDeCuenta(cuenta)
+      // Prioriza el companeroId persistido; si no existe, usa el del mapa base.
+      return { ...sesion, companeroId: companeroId ?? sesion.companeroId }
     }
   } catch {
     /* ignore */
@@ -215,6 +227,13 @@ export function useAuth() {
     guardarUsuario(null)
   }
 
+  /** Vincula la sesión actual con un Companero.id (se llama tras crear la cuenta). */
+  function asignarCompanero(companeroId: string) {
+    if (!usuario.value) return
+    usuario.value = { ...usuario.value, companeroId }
+    guardarUsuario(usuario.value)
+  }
+
   /** Cuentas reales de la app, sin contraseña ni administradores. */
   function listarUsuarios(): UsuarioPublico[] {
     return todasLasCuentas()
@@ -234,6 +253,7 @@ export function useAuth() {
     login,
     signup,
     logout,
+    asignarCompanero,
     listarUsuarios,
   }
 }
