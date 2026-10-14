@@ -2,7 +2,13 @@
 import { computed } from 'vue'
 import { useAppStore } from '../composables/useAppStore'
 import EstadoDatos from '../components/EstadoDatos.vue'
-import { calcularBalances, deudasDeGasto, simplificarDeudas } from '../utils/balances'
+import {
+  calcularBalances,
+  cuotaPendienteDeGasto,
+  desgloseParticipantesGasto,
+  participantesGasto,
+  simplificarDeudas,
+} from '../utils/balances'
 import { getAvatarColor, getInitials } from '../utils/avatars'
 
 const {
@@ -23,16 +29,27 @@ const ventas = computed(() =>
   compras.value.reduce((acc, g) => acc + g.monto, 0)
 )
 
-const cobrado = computed(() =>
-  pagos.value.reduce((acc, p) => acc + p.monto, 0)
-)
-
-const deudasPorCompra = computed(() =>
-  compras.value.flatMap((g) => deudasDeGasto(g, pagos.value, companeros.value))
-)
+const deudasPorCompraDetalladas = computed(() => {
+  return compras.value.flatMap((g) => {
+    const prod = productos.value.find((p) => p.id === g.productoId)
+    const compraNombre = prod?.nombre ?? g.descripcion
+    return participantesGasto(g, companeros.value)
+      .map((d) => {
+        const monto = cuotaPendienteDeGasto(g, d.companeroId, pagos.value, companeros.value)
+        return {
+          deId: d.companeroId,
+          paraId: g.pagadoPorId,
+          monto,
+          compraNombre,
+          gastoId: g.id,
+        }
+      })
+      .filter((d) => d.monto > 0.009)
+  })
+})
 
 const pendienteCompras = computed(() =>
-  deudasPorCompra.value.reduce((acc, d) => acc + d.monto, 0)
+  deudasPorCompraDetalladas.value.reduce((acc, d) => acc + d.monto, 0)
 )
 
 const balances = computed(() =>
@@ -45,7 +62,19 @@ const pendienteGlobal = computed(() =>
   deudasGlobales.value.reduce((acc, d) => acc + d.monto, 0)
 )
 
-const ganancia = computed(() => cobrado.value)
+const ganancia = computed(() => {
+  return compras.value.reduce((acc, g) => {
+    const desglose = desgloseParticipantesGasto(g, pagos.value, companeros.value)
+    const pagadoEnGasto = desglose.reduce((sum, p) => sum + p.pagado, 0)
+    return acc + pagadoEnGasto
+  }, 0)
+})
+
+const cobrado = computed(() => ganancia.value)
+
+const pagosRecientes = computed(() =>
+  [...pagos.value].sort((a, b) => b.id - a.id)
+)
 
 const nombreProducto = (id?: string) =>
   productos.value.find((p) => p.id === id)?.nombre ?? 'Compra'
@@ -73,7 +102,7 @@ const nombreProducto = (id?: string) =>
         <article class="kpi verde">
           <span class="kpi-label">Ganancias cobradas</span>
           <span class="kpi-valor">${{ ganancia.toFixed(2) }}</span>
-          <span class="kpi-meta">Pagos registrados entre compañeros</span>
+          <span class="kpi-meta">Recaudado de ventas de productos</span>
         </article>
         <article class="kpi rojo">
           <span class="kpi-label">Saldos pendientes</span>
@@ -89,19 +118,23 @@ const nombreProducto = (id?: string) =>
 
       <section class="bloque">
         <h3>Saldos pendientes por compra</h3>
-        <ul v-if="deudasPorCompra.length" class="lista">
+        <ul v-if="deudasPorCompraDetalladas.length" class="lista">
           <li
-            v-for="(deuda, i) in deudasPorCompra"
-            :key="`${deuda.deId}-${deuda.paraId}-${i}`"
+            v-for="(deuda, i) in deudasPorCompraDetalladas"
+            :key="`${deuda.deId}-${deuda.gastoId}-${i}`"
             class="item"
           >
-            <span>
-              <strong>{{ nombreCompanero(deuda.deId) }}</strong>
-              le debe
-              <strong>${{ deuda.monto.toFixed(2) }}</strong>
-              a
-              <strong>{{ nombreCompanero(deuda.paraId) }}</strong>
-            </span>
+            <div class="persona">
+              <span class="avatar" :style="{ backgroundColor: getAvatarColor(nombreCompanero(deuda.deId)) }">
+                {{ getInitials(nombreCompanero(deuda.deId)) }}
+              </span>
+              <span>
+                <strong>{{ nombreCompanero(deuda.deId) }}</strong>
+                {{ deuda.deId === deuda.paraId ? 'debe su cuota en' : 'le debe a ' + nombreCompanero(deuda.paraId) + ' en' }}
+                <em>"{{ deuda.compraNombre }}"</em>
+              </span>
+            </div>
+            <strong>${{ deuda.monto.toFixed(2) }}</strong>
           </li>
         </ul>
         <p v-else class="vacio">No hay deudas abiertas de productos.</p>
@@ -126,17 +159,39 @@ const nombreProducto = (id?: string) =>
       </section>
 
       <section class="bloque">
-        <h3>Compras recientes</h3>
+        <h3>Compras de productos ({{ compras.length }})</h3>
         <ul v-if="compras.length" class="lista">
           <li v-for="compra in compras" :key="compra.id" class="item">
             <span>
               {{ nombreProducto(compra.productoId) }}
-              · {{ nombreCompanero(compra.pagadoPorId) }}
+              · Pagado por {{ nombreCompanero(compra.pagadoPorId) }}
             </span>
             <strong>${{ compra.monto.toFixed(2) }}</strong>
           </li>
         </ul>
         <p v-else class="vacio">Aún no hay compras de productos.</p>
+      </section>
+
+      <section class="bloque">
+        <h3>Historial de abonos y pagos en vivo ({{ pagos.length }})</h3>
+        <ul v-if="pagosRecientes.length" class="lista">
+          <li v-for="pago in pagosRecientes" :key="pago.id" class="item">
+            <div class="persona">
+              <span class="avatar" :style="{ backgroundColor: getAvatarColor(nombreCompanero(pago.deId)) }">
+                {{ getInitials(nombreCompanero(pago.deId)) }}
+              </span>
+              <span>
+                <strong>{{ nombreCompanero(pago.deId) }}</strong>
+                abonó a
+                <strong>{{ nombreCompanero(pago.paraId) }}</strong>
+                <span v-if="pago.nota" class="nota-pago">({{ pago.nota }})</span>
+                · <small class="fecha-pago">{{ pago.fecha }}</small>
+              </span>
+            </div>
+            <strong class="monto-verde">+${{ pago.monto.toFixed(2) }}</strong>
+          </li>
+        </ul>
+        <p v-else class="vacio">Aún no se han registrado abonos o pagos.</p>
       </section>
     </div>
   </EstadoDatos>
@@ -263,5 +318,22 @@ const nombreProducto = (id?: string) =>
   color: var(--color-text-muted);
   border: 2px dashed var(--color-border);
   border-radius: var(--radius-md);
+}
+
+.monto-verde {
+  color: var(--color-positive);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.nota-pago {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.fecha-pago {
+  color: var(--color-text-light);
+  font-size: 0.75rem;
 }
 </style>

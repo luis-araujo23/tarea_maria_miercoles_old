@@ -27,8 +27,16 @@ const error = ref<string | null>(null)
 const cargado = ref(false)
 const sincronizadoEn = ref<number | null>(null)
 
+export interface EventoStore {
+  tipo: 'pago' | 'gasto'
+  mensaje: string
+  timestamp: number
+}
+const ultimoEvento = ref<EventoStore | null>(null)
+
 /** Evita lanzar dos cargas simultáneas si varias vistas piden los datos. */
 let peticionEnCurso: Promise<void> | null = null
+let syncIntervalo: ReturnType<typeof setInterval> | null = null
 
 function aplicarEstado(estado: AppState) {
   companeros.value = estado.companeros
@@ -37,6 +45,92 @@ function aplicarEstado(estado: AppState) {
   categorias.value = estado.categorias
   productos.value = estado.productos
 }
+
+async function sincronizarEnVivo(forzar = false): Promise<void> {
+  if (guardando.value && !forzar) return
+
+  try {
+    const estadoFresco = await api.obtenerEstado(false)
+    const { usuario, esAdmin } = useAuth()
+    const yo = usuario.value ? companeroDeUsuario(usuario.value, estadoFresco.companeros) : null
+
+    // Detectar si hay pagos nuevos para notificar reactivamente al usuario
+    if (cargado.value && estadoFresco.pagos.length > pagos.value.length) {
+      const idsViejos = new Set(pagos.value.map((p) => p.id))
+      const nuevosPagos = estadoFresco.pagos.filter((p) => !idsViejos.has(p.id))
+
+      for (const p of nuevosPagos) {
+        const deQuien = estadoFresco.companeros.find((c) => c.id === p.deId)?.nombre || 'Un compañero'
+        const paraQuien = estadoFresco.companeros.find((c) => c.id === p.paraId)?.nombre || 'un compañero'
+
+        if (yo && p.paraId === yo.id) {
+          ultimoEvento.value = {
+            tipo: 'pago',
+            mensaje: `🎉 ¡Pago recibido! ${deQuien} te abonó $${p.monto.toFixed(2)}`,
+            timestamp: Date.now(),
+          }
+        } else if (yo && p.deId === yo.id) {
+          ultimoEvento.value = {
+            tipo: 'pago',
+            mensaje: `✅ Se acreditó tu abono de $${p.monto.toFixed(2)} a ${paraQuien}`,
+            timestamp: Date.now(),
+          }
+        } else if (esAdmin.value) {
+          ultimoEvento.value = {
+            tipo: 'pago',
+            mensaje: `💳 ${deQuien} abonó $${p.monto.toFixed(2)} a ${paraQuien}`,
+            timestamp: Date.now(),
+          }
+        }
+      }
+    }
+
+    // Detectar si hay gastos/compras nuevas donde participe el usuario
+    if (cargado.value && estadoFresco.gastos.length > gastos.value.length) {
+      const idsViejos = new Set(gastos.value.map((g) => g.id))
+      const nuevosGastos = estadoFresco.gastos.filter((g) => !idsViejos.has(g.id))
+
+      for (const g of nuevosGastos) {
+        const creador = estadoFresco.companeros.find((c) => c.id === g.pagadoPorId)?.nombre || 'Un compañero'
+        const esParticipante = g.divisiones.some((d) => d.companeroId === yo?.id)
+        if (yo && esParticipante && g.pagadoPorId !== yo.id) {
+          ultimoEvento.value = {
+            tipo: 'gasto',
+            mensaje: `📦 ${creador} registró: "${g.descripcion}" donde participas`,
+            timestamp: Date.now(),
+          }
+        }
+      }
+    }
+
+    aplicarEstado(estadoFresco)
+    sincronizadoEn.value = Date.now()
+  } catch {
+    /* ignore fallback */
+  }
+}
+
+function iniciarCicloSincronizacion() {
+  if (typeof window === 'undefined') return
+  if (syncIntervalo) return
+
+  // Consulta automática en vivo cada 2.5 segundos
+  syncIntervalo = setInterval(() => {
+    if (!document.hidden && cargado.value) {
+      sincronizarEnVivo()
+    }
+  }, 2500)
+
+  window.addEventListener('visibilitychange', () => {
+    if (!document.hidden && cargado.value) sincronizarEnVivo()
+  })
+
+  window.addEventListener('focus', () => {
+    if (cargado.value) sincronizarEnVivo()
+  })
+}
+
+iniciarCicloSincronizacion()
 
 async function pedirDatos(forzarServidor: boolean): Promise<void> {
   cargando.value = true
@@ -125,12 +219,16 @@ export function useAppStore() {
   function eliminarGasto(id: number) {
     return ejecutar(async () => {
       gastos.value = await api.eliminarGasto(id)
+      const estadoFresco = await api.obtenerEstado(false)
+      aplicarEstado(estadoFresco)
     })
   }
 
   function vaciarGastos() {
     return ejecutar(async () => {
       gastos.value = await api.vaciarGastos()
+      const estadoFresco = await api.obtenerEstado(false)
+      aplicarEstado(estadoFresco)
     })
   }
 
@@ -139,11 +237,13 @@ export function useAppStore() {
       const { usuario, esAdmin } = useAuth()
       if (!esAdmin.value) {
         const titular = companeroDeUsuario(usuario.value, companeros.value)
-        if (!titular || datos.deId !== titular.id) {
-          throw new Error('Solo puedes registrar los pagos de tu propia cuenta')
+        if (!titular || (datos.deId !== titular.id && datos.paraId !== titular.id)) {
+          throw new Error('Solo puedes registrar o aprobar pagos en los que participas')
         }
       }
       pagos.value = await api.crearPago(datos)
+      const estadoFresco = await api.obtenerEstado(false)
+      aplicarEstado(estadoFresco)
     })
   }
 
@@ -207,10 +307,12 @@ export function useAppStore() {
     error,
     listo,
     sincronizadoEn,
+    ultimoEvento,
 
     cargarDatos,
     restaurarDesdeServidor,
     reintentar,
+    sincronizarEnVivo,
 
     nombreCompanero,
     buscarGasto,

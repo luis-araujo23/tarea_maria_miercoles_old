@@ -44,6 +44,25 @@ export function calcularCuota(
   }
 }
 
+/** Cuánto ha pagado o cubierto un participante de su cuota en una compra. */
+export function cuotaPagadaDeGasto(
+  gasto: Gasto,
+  companeroId: string,
+  pagos: Pago[],
+  companeros: Companero[]
+): number {
+  const cuota = calcularCuota(gasto, companeroId, companeros)
+  // Quien compró el producto adelantó el total al contado; su cuota está 100% cubierta
+  if (gasto.pagadoPorId === companeroId) {
+    return Math.round(cuota * 100) / 100
+  }
+  const pagado = pagos
+    .filter((p) => p.gastoId === gasto.id && p.deId === companeroId)
+    .reduce((acc, p) => acc + p.monto, 0)
+
+  return Math.min(Math.round(cuota * 100) / 100, Math.round(pagado * 100) / 100)
+}
+
 /** Cuánto le falta por cubrir de su parte en esa compra. */
 export function cuotaPendienteDeGasto(
   gasto: Gasto,
@@ -51,12 +70,60 @@ export function cuotaPendienteDeGasto(
   pagos: Pago[],
   companeros: Companero[]
 ): number {
+  // El organizador/comprador ya pagó la compra al contado al registrarla; no se debe a sí mismo
+  if (gasto.pagadoPorId === deudorId) {
+    return 0
+  }
+
   const cuota = calcularCuota(gasto, deudorId, companeros)
   const pagado = pagos
     .filter((p) => p.gastoId === gasto.id && p.deId === deudorId)
     .reduce((acc, p) => acc + p.monto, 0)
 
   return Math.max(0, Math.round((cuota - pagado) * 100) / 100)
+}
+
+export interface DetalleParticipanteGasto {
+  companeroId: string
+  nombre: string
+  cuota: number
+  pagado: number
+  pendiente: number
+  porcentaje: number
+  saldado: boolean
+  esComprador: boolean
+}
+
+/** Devuelve el estado de pago detallado de cada participante de un gasto/compra. */
+export function desgloseParticipantesGasto(
+  gasto: Gasto,
+  pagos: Pago[],
+  companeros: Companero[]
+): DetalleParticipanteGasto[] {
+  return participantesGasto(gasto, companeros).map((p) => {
+    const comp = companeros.find((c) => c.id === p.companeroId)
+    const cuota = Math.round(calcularCuota(gasto, p.companeroId, companeros) * 100) / 100
+    const esComprador = gasto.pagadoPorId === p.companeroId
+    const abonos = pagos
+      .filter((pg) => pg.gastoId === gasto.id && pg.deId === p.companeroId)
+      .reduce((acc, pg) => acc + pg.monto, 0)
+
+    const pagado = esComprador ? cuota : Math.min(cuota, Math.round(abonos * 100) / 100)
+    const pendiente = esComprador ? 0 : Math.max(0, Math.round((cuota - abonos) * 100) / 100)
+    const porcentaje = cuota > 0 ? Math.min(100, Math.round((pagado / cuota) * 100)) : 100
+    const saldado = pendiente <= 0.009
+
+    return {
+      companeroId: p.companeroId,
+      nombre: comp?.nombre ?? 'Desconocido',
+      cuota,
+      pagado,
+      pendiente,
+      porcentaje,
+      saldado,
+      esComprador,
+    }
+  })
 }
 
 export function deudasDeGasto(

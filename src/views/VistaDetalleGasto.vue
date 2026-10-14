@@ -3,7 +3,7 @@ import { computed, onMounted } from 'vue'
 import { useAppStore } from '../composables/useAppStore'
 import { useTasaCambio } from '../composables/useTasaCambio'
 import EstadoDatos from '../components/EstadoDatos.vue'
-import { calcularCuota, etiquetaDivision, participantesGasto } from '../utils/balances'
+import { calcularCuota, desgloseParticipantesGasto, etiquetaDivision, participantesGasto } from '../utils/balances'
 import { getCategoryIcon } from '../utils/categorias'
 import { getAvatarColor, getInitials } from '../utils/avatars'
 
@@ -11,6 +11,7 @@ const props = defineProps<{ id: string }>()
 
 const {
   gastos,
+  pagos,
   companeros,
   categorias,
   cargando: cargandoDatos,
@@ -75,16 +76,28 @@ const fechaLarga = computed(() => {
 
 const desglose = computed(() => {
   if (!gasto.value) return []
-  return participantesGasto(gasto.value, companeros.value).map((p) => {
-    const cuota = calcularCuota(gasto.value!, p.companeroId, companeros.value)
-    return {
-      companeroId: p.companeroId,
-      nombre: nombreCompanero(p.companeroId),
-      cuota,
-      porcentaje: gasto.value!.monto > 0 ? (cuota / gasto.value!.monto) * 100 : 0,
-      esPagador: p.companeroId === gasto.value!.pagadoPorId,
-    }
-  })
+  return desgloseParticipantesGasto(gasto.value, pagos.value, companeros.value)
+})
+
+const totalCobrado = computed(() => {
+  return desglose.value.reduce((acc, p) => acc + p.pagado, 0)
+})
+
+const totalPendiente = computed(() => {
+  if (!gasto.value) return 0
+  return Math.max(0, Math.round((gasto.value.monto - totalCobrado.value) * 100) / 100)
+})
+
+const porcentajeCobrado = computed(() => {
+  if (!gasto.value || gasto.value.monto <= 0) return 100
+  return Math.min(100, Math.round((totalCobrado.value / gasto.value.monto) * 100))
+})
+
+const abonosDeEsteGasto = computed(() => {
+  if (!gasto.value) return []
+  return pagos.value
+    .filter((p) => p.gastoId === gasto.value!.id)
+    .sort((a, b) => b.id - a.id)
 })
 
 /** La suma de las cuotas debe cuadrar con el monto del gasto. */
@@ -190,10 +203,17 @@ const descuadre = computed(() => {
           </section>
 
           <section class="bloque">
-            <h2 class="bloque-titulo">Reparto entre participantes</h2>
-            <p class="bloque-sub">
-              {{ etiquetaDivision(gasto.tipoDivision, gasto.divisiones, companeros) }}
-            </p>
+            <div class="bloque-header-flex">
+              <div>
+                <h2 class="bloque-titulo">Reparto entre participantes y estado de pagos</h2>
+                <p class="bloque-sub">
+                  {{ etiquetaDivision(gasto.tipoDivision, gasto.divisiones, companeros) }}
+                </p>
+              </div>
+              <span class="badge-recaudacion-detalle" :class="{ ok: totalPendiente <= 0.009 }">
+                {{ totalPendiente <= 0.009 ? '✓ 100% Cobrado y saldado' : `Cobrado: $${totalCobrado.toFixed(2)} / $${gasto.monto.toFixed(2)}` }}
+              </span>
+            </div>
 
             <ul class="desglose">
               <li v-for="fila in desglose" :key="fila.companeroId" class="fila">
@@ -204,13 +224,20 @@ const descuadre = computed(() => {
                   <div class="fila-datos">
                     <span class="fila-nombre">
                       {{ fila.nombre }}
-                      <span v-if="fila.esPagador" class="chip">pagó</span>
+                      <span v-if="fila.esComprador" class="chip chip-comprador">Comprador</span>
+                      <span v-else-if="fila.saldado" class="chip chip-ok">✓ Saldado</span>
+                      <span v-else class="chip chip-pendiente">Debe ${{ fila.pendiente.toFixed(2) }}</span>
                     </span>
-                    <span class="fila-porcentaje">{{ fila.porcentaje.toFixed(1) }}% del gasto</span>
+                    <span class="fila-porcentaje">
+                      Cuota asignada: ${{ fila.cuota.toFixed(2) }} ·
+                      {{ fila.esComprador ? 'Cubierta al comprar' : `Ha pagado $${fila.pagado.toFixed(2)}` }}
+                    </span>
                   </div>
                 </div>
                 <div class="fila-montos">
-                  <span class="fila-usd">${{ fila.cuota.toFixed(2) }}</span>
+                  <span class="fila-usd" :class="{ ok: fila.saldado }">
+                    {{ fila.saldado ? '✓ Pagado' : `Debe $${fila.pendiente.toFixed(2)}` }}
+                  </span>
                   <span v-if="disponible" class="fila-bs">{{ formatearBolivares(fila.cuota) }}</span>
                 </div>
               </li>
@@ -220,6 +247,31 @@ const descuadre = computed(() => {
               Las cuotas suman ${{ (gasto.monto + descuadre).toFixed(2) }} y no coinciden con el
               total de ${{ gasto.monto.toFixed(2) }}. Edita el gasto para corregir la división.
             </p>
+          </section>
+
+          <!-- HISTORIAL DE ABONOS DE ESTA COMPRA -->
+          <section class="bloque">
+            <h2 class="bloque-titulo">Abonos y pagos de esta compra ({{ abonosDeEsteGasto.length }})</h2>
+            <p class="bloque-sub">Movimientos registrados específicamente para cubrir esta compra.</p>
+
+            <div v-if="abonosDeEsteGasto.length === 0" class="empty-abonos">
+              No se han registrado abonos adicionales todavía.
+            </div>
+
+            <ul v-else class="lista-abonos">
+              <li v-for="abono in abonosDeEsteGasto" :key="abono.id" class="item-abono">
+                <div class="abono-flujo">
+                  <strong>{{ nombreCompanero(abono.deId) }}</strong>
+                  <span class="abono-flecha">→ abonó a</span>
+                  <strong>{{ nombreCompanero(abono.paraId) }}</strong>
+                  <span v-if="abono.nota" class="abono-nota">({{ abono.nota }})</span>
+                </div>
+                <div class="abono-valores">
+                  <span class="abono-monto">+${{ abono.monto.toFixed(2) }}</span>
+                  <time class="abono-fecha">{{ abono.fecha }}</time>
+                </div>
+              </li>
+            </ul>
           </section>
         </article>
 
@@ -546,24 +598,115 @@ const descuadre = computed(() => {
   color: var(--color-text-muted);
 }
 
-.fila-montos {
+.bloque-header-flex {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.badge-recaudacion-detalle {
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.badge-recaudacion-detalle.ok {
+  background: #ecfdf5;
+  color: var(--color-positive);
+}
+
+.chip-comprador {
+  background: var(--color-primary-light);
+  color: var(--ujap-blue);
+}
+
+.chip-ok {
+  background: #ecfdf5;
+  color: var(--color-positive);
+}
+
+.chip-pendiente {
+  background: #fef2f2;
+  color: var(--color-danger);
 }
 
 .fila-usd {
   font-size: 0.95rem;
   font-weight: 700;
-  color: var(--color-negative);
+  color: var(--color-danger);
   font-variant-numeric: tabular-nums;
 }
 
-.fila-bs {
-  font-size: 0.7rem;
+.fila-usd.ok {
+  color: var(--color-positive);
+}
+
+.empty-abonos {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+  padding: 0.5rem 0;
+}
+
+.lista-abonos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.item-abono {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  background: var(--color-bg-muted);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+}
+
+.abono-flujo {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.abono-flecha {
   color: var(--color-text-light);
-  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+}
+
+.abono-nota {
+  color: var(--color-text-muted);
+  font-size: 0.74rem;
+}
+
+.abono-valores {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.abono-monto {
+  font-weight: 700;
+  color: var(--color-positive);
+  font-size: 0.9rem;
+}
+
+.abono-fecha {
+  font-size: 0.68rem;
+  color: var(--color-text-light);
 }
 
 .aviso-descuadre {

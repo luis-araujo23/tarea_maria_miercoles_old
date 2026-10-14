@@ -1,23 +1,70 @@
-{
-  "_id": "notif_20260930_maria_g12",
-  "tipo": "abono_deuda",
-  "leida": false,
-  "creadaEn": "2026-09-30T20:11:00-04:00",
-  "destinatario": {
-    "usuarioEmail": "maria@ujap.edu.ve",
-    "nombreVisible": "María"
+[
+  {
+    "_id": { "$oid": "66fb5a0f18a23d0012e841a1" },
+    "tipo": "abono_deuda",
+    "leida": false,
+    "creadaEn": { "$date": "2026-09-30T20:11:00Z" },
+    "destinatario": {
+      "usuarioEmail": "maria@ujap.edu.ve",
+      "nombreVisible": "María"
+    },
+    "contexto": {
+      "gastoId": 12,
+      "producto": "Caja de lápices y bolígrafos",
+      "montoTotal": 6.5,
+      "cuota": 2.17
+    },
+    "evento": {
+      "quienPago": "Juan",
+      "montoAbonado": 2.17,
+      "pendienteTrasAbono": 0.0,
+      "porcentajeAvance": 100
+    },
+    "canal": ["in_app", "push"],
+    "metadatos": {
+      "dispositivo": "Android Chrome 129",
+      "ip": "192.168.1.45"
+    }
   },
-  "contexto": {
-    "gastoId": 12,
-    "producto": "Caja de lápices",
-    "montoTotal": 2.0,
-    "cuota": 1.0
+  {
+    "_id": { "$oid": "66fb5a0f18a23d0012e841a2" },
+    "tipo": "nuevo_gasto_grupo",
+    "leida": true,
+    "creadaEn": { "$date": "2026-10-01T14:30:00Z" },
+    "destinatario": {
+      "usuarioEmail": "carlos@ujap.edu.ve",
+      "nombreVisible": "Carlos"
+    },
+    "contexto": {
+      "gastoId": 14,
+      "producto": "Alquiler de videobeam (1 día)",
+      "montoTotal": 25.0,
+      "cuota": 8.33
+    },
+    "evento": {
+      "creadoPor": "María",
+      "participantes": ["María", "Juan", "Carlos"],
+      "tipoDivision": "igual"
+    },
+    "canal": ["in_app"],
+    "metadatos": {
+      "dispositivo": "Windows Edge 129"
+    }
   },
-  "evento": {
-    "quienPago": "Juan",
-    "montoAbonado": 0.5,
-    "pendienteTrasAbono": 0.5,
-    "porcentajeAvance": 50
-  },
-  "canal": ["in_app", "push"]
-}
+  {
+    "_id": { "$oid": "66fb5a0f18a23d0012e841a3" },
+    "tipo": "recordatorio_saldo_pendiente",
+    "leida": false,
+    "creadaEn": { "$date": "2026-10-05T09:00:00Z" },
+    "destinatario": {
+      "usuarioEmail": "juan@ujap.edu.ve",
+      "nombreVisible": "Juan"
+    },
+    "contexto": {
+      "deudaTotal": 8.33,
+      "acreedorPrincipal": "María",
+      "diasPendiente": 4
+    },
+    "canal": ["in_app", "email"]
+  }
+]

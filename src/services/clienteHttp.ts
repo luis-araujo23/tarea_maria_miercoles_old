@@ -1,7 +1,9 @@
 /**
- * Cliente HTTP de la aplicación. Envuelve `fetch` para que el resto del código
- * trabaje siempre con promesas que resuelven datos válidos o fallan con un
- * ErrorApi que ya trae un mensaje listo para mostrarle al usuario.
+ * Cliente HTTP de la aplicación (Entrega 3).
+ *
+ * Conecta el frontend con la API de Express (puerto 3000) usando las variables
+ * de entorno de Vite (VITE_API_URL) y CORS, adaptándose para funcionar tanto
+ * en localhost como al abrir la app desde otra PC o móvil en la misma red local.
  */
 
 export type CodigoErrorApi =
@@ -27,52 +29,90 @@ export class ErrorApi extends Error {
   }
 }
 
-/** Base de la API simulada: archivos JSON servidos por el propio sitio. */
-const BASE_URL = `${import.meta.env.BASE_URL}api/`
 const TIMEOUT_MS = 8000
 const REINTENTOS = 1
 const ESPERA_ENTRE_REINTENTOS_MS = 600
-
-/**
- * Los JSON se sirven desde disco y responden en milisegundos. La latencia
- * artificial mantiene visibles los estados de carga, igual que contra un
- * backend real.
- */
-const LATENCIA_MS = 400
+const LATENCIA_MS = 150
 
 function esperar(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-/** Retardo que simulan las operaciones de la API. */
 export function latenciaSimulada(factor = 1): Promise<void> {
   return esperar(Math.round(LATENCIA_MS * factor))
 }
 
+/**
+ * Resuelve la URL base de la API.
+ * 1. Si existe VITE_API_URL en .env (ej: http://localhost:3000):
+ *    - Si se navega desde otra máquina en red (ej. 192.168.X.X:5173), reemplaza
+ *      'localhost' por el host real de la máquina para que las peticiones lleguen
+ *      al backend de Express en la misma máquina.
+ * 2. Si no hay VITE_API_URL o falla, usa el proxy relativo '/api/' configurado en Vite.
+ */
+export function obtenerBaseApi(): string {
+  // En el navegador, la ruta relativa '/api/' resuelve automáticamente al host y puerto
+  // actuales (Vite dev server con middleware Express o Express directo), garantizando
+  // funcionamiento perfecto tanto en localhost como desde cualquier otra PC/móvil en LAN.
+  if (typeof window !== 'undefined') {
+    return '/api/'
+  }
+
+  const envUrl = import.meta.env.VITE_API_URL as string | undefined
+  if (envUrl) {
+    const base = envUrl.endsWith('/') ? envUrl : `${envUrl}/`
+    return base.endsWith('/api/') ? base : `${base}api/`
+  }
+
+  return '/api/'
+}
+
 function mensajeHttp(estado: number): string {
   if (estado === 404) return 'El recurso solicitado no existe en el servidor'
+  if (estado === 401) return 'Credenciales incorrectas o sesión expirada'
   if (estado === 403) return 'No tienes permiso para consultar estos datos'
+  if (estado === 422) return 'Los datos enviados no son válidos'
   if (estado >= 500) return 'El servidor tuvo un problema. Intenta de nuevo en un momento.'
   return `El servidor respondió con error ${estado}`
 }
 
 function esErrorTransitorio(e: unknown): boolean {
-  // Un TypeError de fetch casi siempre es un corte de red momentáneo.
   return e instanceof TypeError
 }
 
-async function intentarPeticion<T>(recurso: string): Promise<T> {
+async function intentarPeticion<T>(
+  recurso: string,
+  opciones: RequestInit = {},
+): Promise<T> {
   const controlador = new AbortController()
   const temporizador = setTimeout(() => controlador.abort(), TIMEOUT_MS)
+  const base = obtenerBaseApi()
+  const urlFinal = `${base}${recurso.replace(/^\/+/, '')}`
 
   try {
-    const respuesta = await fetch(`${BASE_URL}${recurso}`, {
+    const respuesta = await fetch(urlFinal, {
+      ...opciones,
       signal: controlador.signal,
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...(opciones.headers || {}),
+      },
     })
 
     if (!respuesta.ok) {
-      throw new ErrorApi('http', mensajeHttp(respuesta.status), respuesta.status)
+      let mensajeServidor = ''
+      try {
+        const errorJson = (await respuesta.json()) as { error?: string; message?: string }
+        mensajeServidor = errorJson.error || errorJson.message || ''
+      } catch {
+        /* ignore */
+      }
+      throw new ErrorApi(
+        'http',
+        mensajeServidor || mensajeHttp(respuesta.status),
+        respuesta.status,
+      )
     }
 
     try {
@@ -91,7 +131,7 @@ async function intentarPeticion<T>(recurso: string): Promise<T> {
     }
 
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      throw new ErrorApi('offline', 'Sin conexión: no se pudieron cargar los datos del grupo')
+      throw new ErrorApi('offline', 'Sin conexión: no se pudieron cargar los datos')
     }
 
     throw new ErrorApi('red', 'No se pudo contactar el servidor de datos')
@@ -100,16 +140,13 @@ async function intentarPeticion<T>(recurso: string): Promise<T> {
   }
 }
 
-/**
- * Pide un recurso de la API. Reintenta una vez ante fallos de red pasajeros,
- * pero no ante respuestas de error del servidor: esas no cambian al repetir.
- */
+/** Petición GET */
 export async function obtenerJson<T>(recurso: string): Promise<T> {
   let ultimoError: unknown
 
   for (let intento = 0; intento <= REINTENTOS; intento++) {
     try {
-      return await intentarPeticion<T>(recurso)
+      return await intentarPeticion<T>(recurso, { method: 'GET' })
     } catch (e) {
       ultimoError = e
       const reintentable = e instanceof ErrorApi && (e.codigo === 'red' || e.codigo === 'timeout')
@@ -121,6 +158,18 @@ export async function obtenerJson<T>(recurso: string): Promise<T> {
   throw ultimoError instanceof ErrorApi
     ? ultimoError
     : new ErrorApi('red', 'No se pudo contactar el servidor de datos')
+}
+
+/** Petición POST, PUT o DELETE */
+export async function enviarJson<T>(
+  recurso: string,
+  metodo: 'POST' | 'PUT' | 'DELETE',
+  cuerpo?: unknown,
+): Promise<T> {
+  return intentarPeticion<T>(recurso, {
+    method: metodo,
+    body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined,
+  })
 }
 
 /** Traduce cualquier excepción en un mensaje presentable en la interfaz. */

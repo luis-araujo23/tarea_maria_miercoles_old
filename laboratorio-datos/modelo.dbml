@@ -6,6 +6,7 @@ Table usuario {
   nombre varchar [not null]
   apellido varchar [not null]
   email varchar [unique, not null]
+  clave varchar [not null]
   rol varchar [not null, note: 'admin | usuario']
   creado_en timestamp [not null]
 }

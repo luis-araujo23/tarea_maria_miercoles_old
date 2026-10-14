@@ -83,6 +83,10 @@ router.beforeEach((to) => {
     return { name: 'materiales' }
   }
 
+  if (to.name === 'balance' && esAdmin.value) {
+    return { name: 'dashboard' }
+  }
+
   if ((to.name === 'login' || to.name === 'signup') && autenticado.value) {
     return { name: destinoInicio }
   }

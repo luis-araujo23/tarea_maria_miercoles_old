@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import type { RolUsuario, Usuario } from '../types'
+import { enviarJson, obtenerJson } from '../services/clienteHttp'
 
 const AUTH_KEY = 'ujap-split-auth'
 const USERS_KEY = 'ujap-split-users'
@@ -145,6 +146,33 @@ function todasLasCuentas() {
 
 const usuario = ref<Usuario | null>(cargarUsuario(todasLasCuentas()))
 
+async function sincronizarCuentasDesdeServidor() {
+  try {
+    const usuariosRemotos = await obtenerJson<
+      { id: string; nombre: string; apellido?: string; email: string }[]
+    >('auth/usuarios')
+    if (Array.isArray(usuariosRemotos)) {
+      let cambio = false
+      for (const u of usuariosRemotos) {
+        if (!todasLasCuentas().some((c) => c.email.toLowerCase() === u.email.toLowerCase())) {
+          cuentasRegistradas.value.push({
+            nombre: u.nombre,
+            apellido: u.apellido || '',
+            email: u.email,
+            clave: CLAVE_ASIGNADA,
+            rol: 'usuario',
+          })
+          cambio = true
+        }
+      }
+      if (cambio) guardarCuentasRegistradas(cuentasRegistradas.value)
+    }
+  } catch {
+    /* ignore */
+  }
+}
+sincronizarCuentasDesdeServidor()
+
 export function useAuth() {
   const autenticado = computed(() => usuario.value !== null)
   const esAdmin = computed(() => usuario.value?.rol === 'admin')
@@ -168,6 +196,17 @@ export function useAuth() {
     const sesion = sesionDeCuenta(cuenta)
     usuario.value = sesion
     guardarUsuario(sesion)
+
+    // Sincronizar sesión con backend en segundo plano
+    enviarJson<{ ok: boolean; usuario: Usuario }>('auth/login', 'POST', { identificador, clave })
+      .then((res) => {
+        if (res?.usuario) {
+          usuario.value = res.usuario
+          guardarUsuario(res.usuario)
+        }
+      })
+      .catch(() => null)
+
     return true
   }
 
@@ -219,6 +258,22 @@ export function useAuth() {
     const sesion = sesionDeCuenta(nueva)
     usuario.value = sesion
     guardarUsuario(sesion)
+
+    // Enviar registro al backend Express para que esté disponible en todas las PCs
+    enviarJson<{ ok: boolean; usuario: Usuario }>('auth/signup', 'POST', {
+      nombre: nombreLimpio,
+      apellido: apellidoLimpio,
+      email: emailLimpio,
+      clave,
+    })
+      .then((res) => {
+        if (res?.usuario?.companeroId) {
+          usuario.value = { ...usuario.value!, companeroId: res.usuario.companeroId }
+          guardarUsuario(usuario.value)
+        }
+      })
+      .catch(() => null)
+
     return { ok: true, errores: {} }
   }
 

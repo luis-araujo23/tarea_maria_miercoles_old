@@ -8,6 +8,7 @@ import FormularioGasto from '../components/FormularioGasto.vue'
 import ModalConfirmacion from '../components/ModalConfirmacion.vue'
 import ToastNotificacion from '../components/ToastNotificacion.vue'
 import EstadoDatos from '../components/EstadoDatos.vue'
+import { desgloseParticipantesGasto } from '../utils/balances'
 import { validarGasto } from '../utils/validaciones'
 
 const {
@@ -98,15 +99,33 @@ async function guardarGasto(payload: GastoPayload) {
 
 function solicitarEliminarGasto(id: number) {
   const gasto = gastos.value.find((g) => g.id === id)
+  if (!gasto) return
+
+  // VALIDACIÓN: Cuando exista una compra, no se puede eliminar hasta que los demás usuarios
+  // que estén en la compra cancelen su parte.
+  const desglose = desgloseParticipantesGasto(gasto, pagos.value, companeros.value)
+  const participantesConDeuda = desglose.filter((p) => !p.esComprador && !p.saldado)
+
+  if (participantesConDeuda.length > 0) {
+    const nombres = participantesConDeuda
+      .map((p) => `${p.nombre} (debe $${p.pendiente.toFixed(2)})`)
+      .join(', ')
+    mostrarToast(
+      `No se puede eliminar esta compra hasta que los demás usuarios cancelen su parte. Pendientes: ${nombres}`,
+      'error'
+    )
+    return
+  }
+
   confirmacion.value = {
     visible: true,
-    titulo: 'Eliminar gasto',
-    mensaje: `¿Eliminar "${gasto?.descripcion ?? 'este gasto'}"? Esta accion no se puede deshacer.`,
+    titulo: 'Eliminar compra saldada',
+    mensaje: `¿Eliminar "${gasto.descripcion}"? La compra está 100% saldada y se archivará junto con sus pagos asociados.`,
     confirmarTexto: 'Eliminar',
     onConfirmar: async () => {
       confirmacion.value.visible = false
       const fallo = await eliminarGasto(id)
-      mostrarToast(fallo ?? 'Gasto eliminado', fallo ? 'error' : 'success')
+      mostrarToast(fallo ?? 'Compra eliminada correctamente', fallo ? 'error' : 'success')
     },
   }
 }
@@ -134,10 +153,24 @@ async function registrarPago(payload: {
 }
 
 function limpiarGastos() {
+  // Validar si alguna compra tiene deudas abiertas
+  const comprasConDeuda = gastos.value.some((g) => {
+    const desglose = desgloseParticipantesGasto(g, pagos.value, companeros.value)
+    return desglose.some((p) => !p.esComprador && !p.saldado)
+  })
+
+  if (comprasConDeuda) {
+    mostrarToast(
+      'No se pueden limpiar los gastos porque existen compras con pagos pendientes. Todos deben cancelar su parte primero.',
+      'error'
+    )
+    return
+  }
+
   confirmacion.value = {
     visible: true,
     titulo: 'Limpiar registros',
-    mensaje: '¿Eliminar todos los gastos? Los pagos registrados se mantendran.',
+    mensaje: '¿Eliminar todos los gastos y compras saldadas? Se reiniciarán todos los registros a cero.',
     confirmarTexto: 'Limpiar todo',
     onConfirmar: async () => {
       confirmacion.value.visible = false

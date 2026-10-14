@@ -1,0 +1,185 @@
+{
+  "categorias": [
+    {
+      "id": "copias",
+      "nombre": "Copias e impresiones",
+      "icono": "🖨️",
+      "keywords": [
+        "copia",
+        "impres",
+        "xerox"
+      ]
+    },
+    {
+      "id": "papel",
+      "nombre": "Hojas y papel",
+      "icono": "📄",
+      "keywords": [
+        "hoja",
+        "resma",
+        "papel"
+      ]
+    },
+    {
+      "id": "escritura",
+      "nombre": "Lápices y bolígrafos",
+      "icono": "✏️",
+      "keywords": [
+        "lapic",
+        "bolígrafo",
+        "marcador"
+      ]
+    },
+    {
+      "id": "cuadernos",
+      "nombre": "Cuadernos y apuntes",
+      "icono": "📓",
+      "keywords": [
+        "cuaderno",
+        "libreta",
+        "apunte"
+      ]
+    },
+    {
+      "id": "libros",
+      "nombre": "Libros y manuales",
+      "icono": "📚",
+      "keywords": [
+        "libro",
+        "manual",
+        "texto"
+      ]
+    },
+    {
+      "id": "equipo",
+      "nombre": "Equipo y tecnología",
+      "icono": "💾",
+      "keywords": [
+        "usb",
+        "memoria",
+        "calculadora",
+        "videobeam",
+        "proyector",
+        "data show"
+      ]
+    },
+    {
+      "id": "laboratorio",
+      "nombre": "Laboratorio",
+      "icono": "🔬",
+      "keywords": [
+        "laboratorio",
+        "práctica",
+        "practica"
+      ]
+    },
+    {
+      "id": "otros",
+      "nombre": "Otros materiales",
+      "icono": "📎",
+      "keywords": []
+    }
+  ],
+  "productos": [
+    {
+      "id": "p1",
+      "nombre": "Resma de hojas carta (500)",
+      "precio": 8.5,
+      "categoriaId": "papel",
+      "icono": "📄"
+    },
+    {
+      "id": "p2",
+      "nombre": "Caja de lápices y bolígrafos",
+      "precio": 6.5,
+      "categoriaId": "escritura",
+      "icono": "✏️"
+    },
+    {
+      "id": "p3",
+      "nombre": "Paquete de copias (80 hojas)",
+      "precio": 12,
+      "categoriaId": "copias",
+      "icono": "🖨️"
+    },
+    {
+      "id": "p4",
+      "nombre": "Alquiler de videobeam (1 día)",
+      "precio": 25,
+      "categoriaId": "equipo",
+      "icono": "💾"
+    },
+    {
+      "id": "p5",
+      "nombre": "Impresión de laboratorio (x4)",
+      "precio": 10,
+      "categoriaId": "laboratorio",
+      "icono": "🔬"
+    },
+    {
+      "id": "p6",
+      "nombre": "Cuaderno universitario 100 hojas",
+      "precio": 4.5,
+      "categoriaId": "cuadernos",
+      "icono": "📓"
+    },
+    {
+      "id": "p7",
+      "nombre": "Manual de Cálculo I (copia)",
+      "precio": 15,
+      "categoriaId": "libros",
+      "icono": "📚"
+    }
+  ],
+  "companeros": [
+    {
+      "id": "c1",
+      "nombre": "María"
+    },
+    {
+      "id": "c2",
+      "nombre": "Juan"
+    },
+    {
+      "id": "c3",
+      "nombre": "Carlos"
+    }
+  ],
+  "gastos": [],
+  "pagos": [],
+  "usuarios": [
+    {
+      "id": "u-admin",
+      "nombre": "admin",
+      "apellido": "",
+      "email": "admin@ujap.edu.ve",
+      "clave": "1233",
+      "rol": "admin"
+    },
+    {
+      "id": "u-maria",
+      "nombre": "María",
+      "apellido": "",
+      "email": "maria@ujap.edu.ve",
+      "clave": "1233",
+      "rol": "usuario"
+    },
+    {
+      "id": "u-juan",
+      "nombre": "Juan",
+      "apellido": "",
+      "email": "juan@ujap.edu.ve",
+      "clave": "1233",
+      "rol": "usuario"
+    },
+    {
+      "id": "u-carlos",
+      "nombre": "Carlos",
+      "apellido": "",
+      "email": "carlos@ujap.edu.ve",
+      "clave": "1233",
+      "rol": "usuario"
+    }
+  ],
+  "notificaciones": []
+}
