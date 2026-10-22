@@ -225,6 +225,7 @@ Si prefieres ver los registros de consola del frontend y del backend por separad
 
 | Comando | Acción |
 | :--- | :--- |
+| `npm test` | Ejecuta la suite completa de pruebas automatizadas (Vitest + Supertest). |
 | `npm run type-check` | Ejecuta la verificación estricta de tipos con `vue-tsc`. |
 | `npm run build` | Valida tipos y compila la versión optimizada de producción en la carpeta `dist/`. |
 | `npm run preview` | Previsualiza localmente el paquete de producción generado por Vite. |
@@ -354,8 +355,10 @@ server/
 El proyecto incluye el diseño y modelado de datos para ambientes relacionales y no relacionales, ubicado en la carpeta `laboratorio-datos/`:
 
 ### 9.1 Modelo Relacional (PostgreSQL)
-- **Archivo DDL SQL:** `laboratorio-datos/esquema.sql`
+- **Imagen del Diagrama ER:** `laboratorio-datos/dbdiagram.jpeg` (exportado desde [dbdiagram.io](https://dbdiagram.io))
 - **Código DBML para dbdiagram.io:** `laboratorio-datos/modelo.dbml`
+- **Archivo DDL SQL:** `laboratorio-datos/esquema.sql`
+- **Documentación del Laboratorio:** `laboratorio-datos/README.md`
 - **Entidades Modeladas (7):**
   1. `usuario`: Credenciales de acceso, nombre, email único y rol (`admin` o `usuario`).
   2. `companero`: Miembro del grupo de gastos (relación 1:1 o 1:N opcional con `usuario`).
@@ -369,18 +372,51 @@ El proyecto incluye el diseño y modelado de datos para ambientes relacionales y
 - **Archivo JSON:** `laboratorio-datos/notificacion.mongodb.json`
 - **Justificación:** Los eventos de notificación (alertas de pago, recordatorios de saldo pendiente, confirmaciones de compra) presentan estructuras dinámicas con subdocumentos anidados (`destinatario`, `evento`, `contexto`, `metadatos` con IP y dispositivo). Almacenarlos en formato BSON/JSON permite consultas atómicas sin `JOINs` y una alta velocidad de inserción.
 
+### 9.3 Persistencia con ORM: Prisma vs Sequelize (Clase 12)
+- **Archivo de Esquema ORM:** `prisma/schema.prisma`
+- **Documento de Justificación Técnica:** `docs/JUSTIFICACION_ORM.md`
+- **Decisión del Equipo:** Se seleccionó **Prisma ORM** por su soporte nativo de TypeScript de primer nivel, tipos generados automáticamente sin redundancia, modelado declarativo de relaciones muchos a muchos ($N:N$) para `Gasto` y `GastoDivision` (`participantes[]`), y migraciones versionadas y reproducibles.
+
 ---
 
-## 📂 10. Estructura de Directorios del Proyecto
+## 🧪 10. Pruebas Automatizadas (Vitest & Supertest — Clase 12)
+
+El proyecto cuenta con una suite completa de pruebas unitarias y de integración que validan el correcto funcionamiento de frontend y backend:
+
+```bash
+npm test
+```
+
+### Cobertura de Pruebas:
+1. **Pruebas de Integración de la API (Supertest):**
+   - `tests/api/gastos-crud.test.ts`
+   - Verifica el endpoint de salud `GET /api/health` (status `200`).
+   - Valida el ciclo de vida completo de las **5 operaciones CRUD** sobre `/api/gastos` (`GET`, `POST`, `GET /:id`, `PUT /:id`, `DELETE /:id`).
+   - Verifica validaciones de negocio en el backend (status `422` al omitir descripción, montos negativos o compañeros inexistentes).
+   - Valida los endpoints de catálogo (`/api/productos`, `/api/categorias`, `/api/companeros`) y eventos NoSQL (`/api/notificaciones`).
+2. **Pruebas Unitarias de Frontend (Vitest):**
+   - `tests/unit/balances.test.ts`
+   - Valida los algoritmos de cálculo de cuotas equitativas (`igual`), porcentuales (`porcentaje`) y por montos exactos (`exacto`).
+
+
+---
+
+## 📂 11. Estructura de Directorios del Proyecto
 
 ```
 tarea_maria_miercoles_old/
 ├── .vscode/                   <- Configuraciones de editor recomendadas
 ├── dist/                      <- Bundle generado para producción
-├── laboratorio-datos/         <- Artefactos de base de datos
+├── docs/                      <- Justificaciones y documentación técnica
+│   └── JUSTIFICACION_ORM.md   <- Análisis comparativo Prisma vs Sequelize (Clase 12)
+├── laboratorio-datos/         <- Artefactos de base de datos (Clase 11)
+│   ├── dbdiagram.jpeg         <- Diagrama entidad-relación exportado
 │   ├── esquema.sql            <- DDL PostgreSQL con PKs, FKs, CHECKs e índices
 │   ├── modelo.dbml            <- Diagrama ER en formato DBML
-│   └── notificacion.mongodb.json <- Modelado documental NoSQL
+│   ├── notificacion.mongodb.json <- Modelado documental NoSQL
+│   └── README.md              <- Documentación de diseño de base de datos
+├── prisma/                    <- Modelado con ORM (Clase 12)
+│   └── schema.prisma          <- Esquema Prisma con modelos y relaciones N:N
 ├── public/                    <- Recursos estáticos públicos (logos, favicon)
 ├── server/                    <- Código fuente del backend (Patrón MVC Express)
 │   ├── controllers/           <- Controladores HTTP
@@ -401,17 +437,21 @@ tarea_maria_miercoles_old/
 │   ├── views/                 <- Vistas principales (Dashboard, Gastos, Materiales, Balance, Login)
 │   ├── App.vue                <- Componente raíz
 │   └── main.ts                <- Punto de entrada de la aplicación Vue
+├── tests/                     <- Suite de pruebas automatizadas (Clase 12)
+│   ├── api/                   <- Pruebas de integración con Supertest (CRUD completo)
+│   └── unit/                  <- Pruebas unitarias de frontend con Vitest
 ├── .env                       <- Variables de entorno activas
 ├── .env.example               <- Plantilla de variables de entorno
 ├── index.html                 <- Punto de entrada HTML de Vite
 ├── package.json               <- Definición de scripts y dependencias
 ├── tsconfig.json              <- Configuración del compilador TypeScript
-└── vite.config.ts             <- Configuración de Vite con proxy y red local
+├── vite.config.ts             <- Configuración de Vite con proxy y red local
+└── vitest.config.ts           <- Configuración de entorno de pruebas Vitest
 ```
 
 ---
 
-## 🛠️ 11. Solución de Problemas Frecuentes (FAQ)
+## 🛠️ 12. Solución de Problemas Frecuentes (FAQ)
 
 ### 1. El puerto 3000 o 5173 ya está en uso (`EADDRINUSE`)
 Si recibes un error indicando que el puerto está ocupado, puedes liberar el puerto en Windows PowerShell con:

@@ -51,17 +51,26 @@ export function latenciaSimulada(factor = 1): Promise<void> {
  * 2. Si no hay VITE_API_URL o falla, usa el proxy relativo '/api/' configurado en Vite.
  */
 export function obtenerBaseApi(): string {
-  // En el navegador, la ruta relativa '/api/' resuelve automáticamente al host y puerto
-  // actuales (Vite dev server con middleware Express o Express directo), garantizando
-  // funcionamiento perfecto tanto en localhost como desde cualquier otra PC/móvil en LAN.
-  if (typeof window !== 'undefined') {
-    return '/api/'
-  }
-
-  const envUrl = import.meta.env.VITE_API_URL as string | undefined
+  const envUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim()
   if (envUrl) {
-    const base = envUrl.endsWith('/') ? envUrl : `${envUrl}/`
-    return base.endsWith('/api/') ? base : `${base}api/`
+    let base = envUrl
+    // Si se navega desde otra máquina/móvil en la red local (ej. 192.168.X.X:5173),
+    // ajusta el hostname para que las llamadas directas a Express en el puerto 3000 funcionen vía LAN con CORS
+    if (
+      typeof window !== 'undefined' &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1'
+    ) {
+      try {
+        const parsed = new URL(base)
+        parsed.hostname = window.location.hostname
+        base = parsed.origin
+      } catch {
+        /* fallback si no es URL absoluta */
+      }
+    }
+    const baseConBarra = base.endsWith('/') ? base : `${base}/`
+    return baseConBarra.endsWith('/api/') ? baseConBarra : `${baseConBarra}api/`
   }
 
   return '/api/'

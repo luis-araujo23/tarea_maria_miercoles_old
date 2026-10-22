@@ -1,0 +1,103 @@
+// ============================================================================
+// UJAP Split — Prisma Schema (Entrega 3 / Clase 12)
+// Modelado con ORM: Entidad Gasto con relación N-N hacia Participantes/Compañeros
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id         String      @id @default(uuid())
+  nombre     String
+  apellido   String      @default("")
+  email      String      @unique
+  clave      String
+  rol        String      @default("usuario") // "admin" | "usuario"
+  creadoEn   DateTime    @default(now()) @map("creado_en")
+  companeros Companero[]
+
+  @@map("usuario")
+}
+
+model Companero {
+  id         String          @id @default(uuid())
+  nombre     String
+  usuarioId  String?         @map("usuario_id")
+  usuario    Usuario?        @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  gastos     Gasto[]         @relation("PagadoPor")
+  divisiones GastoDivision[]
+  pagosEnviados Pago[]       @relation("PagoDe")
+  pagosRecibidos Pago[]      @relation("PagoPara")
+
+  @@map("companero")
+}
+
+model Categoria {
+  id        String     @id
+  nombre    String
+  icono     String
+  productos Producto[]
+
+  @@map("categoria")
+}
+
+model Producto {
+  id          String    @id
+  categoriaId String    @map("categoria_id")
+  categoria   Categoria @relation(fields: [categoriaId], references: [id])
+  nombre      String
+  precio      Float
+  icono       String
+  gastos      Gasto[]
+
+  @@map("producto")
+}
+
+model Gasto {
+  id            Int             @id @default(autoincrement())
+  descripcion   String
+  monto         Float
+  pagadoPorId   String          @map("pagado_por_id")
+  pagadoPor     Companero       @relation("PagadoPor", fields: [pagadoPorId], references: [id])
+  productoId    String?         @map("producto_id")
+  producto      Producto?       @relation(fields: [productoId], references: [id])
+  fecha         String
+  tipoDivision  String          @default("igual") @map("tipo_division") // "igual" | "porcentaje" | "exacto"
+  divisiones    GastoDivision[]
+  pagos         Pago[]
+
+  @@map("gasto")
+}
+
+// Tabla intermedia N a N: Gasto <-> Companero (Participantes)
+model GastoDivision {
+  gastoId     Int       @map("gasto_id")
+  gasto       Gasto     @relation(fields: [gastoId], references: [id], onDelete: Cascade)
+  companeroId String    @map("companero_id")
+  companero   Companero @relation(fields: [companeroId], references: [id])
+  valor       Float
+
+  @@id([gastoId, companeroId])
+  @@map("gasto_division")
+}
+
+model Pago {
+  id       Int       @id @default(autoincrement())
+  deId     String    @map("de_id")
+  de       Companero @relation("PagoDe", fields: [deId], references: [id])
+  paraId   String    @map("para_id")
+  para     Companero @relation("PagoPara", fields: [paraId], references: [id])
+  gastoId  Int?      @map("gasto_id")
+  gasto    Gasto?    @relation(fields: [gastoId], references: [id])
+  monto    Float
+  fecha    String
+  nota     String?
+
+  @@map("pago")
+}
