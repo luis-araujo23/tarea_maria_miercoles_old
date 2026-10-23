@@ -85,8 +85,31 @@ export function actualizarProducto(id, datos) {
 
 export function eliminarProducto(id) {
   const db = obtenerDb();
-  const existe = (db.productos || []).some((p) => p.id === id);
-  if (!existe) throw { status: 404, message: `El producto #${id} no existe` };
+  const producto = (db.productos || []).find((p) => p.id === id);
+  if (!producto) throw { status: 404, message: `El producto #${id} no existe` };
+
+  const comprasAsociadas = (db.gastos || []).filter((g) => g.productoId === id);
+  const tieneDeudas = comprasAsociadas.some((gasto) => {
+    const participantes = gasto.divisiones || [];
+    const cuotaIgual = (gasto.tipoDivision === 'igual' && participantes.length > 0)
+      ? (gasto.monto / participantes.length)
+      : 0;
+    return participantes.some((d) => {
+      if (d.companeroId === gasto.pagadoPorId) return false;
+      const cuota = gasto.tipoDivision === 'igual' ? cuotaIgual : d.valor;
+      const pagado = (db.pagos || [])
+        .filter((p) => p.gastoId === gasto.id && p.deId === d.companeroId)
+        .reduce((acc, p) => acc + p.monto, 0);
+      return (cuota - pagado) > 0.009;
+    });
+  });
+
+  if (tieneDeudas) {
+    throw {
+      status: 422,
+      message: `No se puede eliminar "${producto.nombre}" porque tiene compras con pagos pendientes.`,
+    };
+  }
 
   db.productos = db.productos.filter((p) => p.id !== id);
   guardarDb(db);

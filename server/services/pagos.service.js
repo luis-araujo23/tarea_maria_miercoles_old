@@ -39,6 +39,42 @@ export function crearPago(datos) {
     throw { status: 422, message: 'Los participantes del pago deben existir en el grupo' };
   }
 
+  let gastoId = datos.gastoId ? Number(datos.gastoId) : undefined;
+  if (gastoId) {
+    const gasto = (db.gastos || []).find((g) => g.id === gastoId);
+    if (!gasto) {
+      throw { status: 422, message: `El gasto #${gastoId} no existe en el sistema` };
+    }
+    if (gasto.pagadoPorId !== paraId) {
+      throw {
+        status: 422,
+        message: `El receptor del abono (${receptor.nombre}) no es quien pagó el gasto #${gastoId}`,
+      };
+    }
+    const participantes = gasto.divisiones || [];
+    const cuotaIgual = (gasto.tipoDivision === 'igual' && participantes.length > 0)
+      ? (gasto.monto / participantes.length)
+      : 0;
+    const divisionDeudor = participantes.find((d) => d.companeroId === deId);
+    if (!divisionDeudor) {
+      throw {
+        status: 422,
+        message: `${pagador.nombre} no participa en el gasto #${gastoId}`,
+      };
+    }
+    const cuota = gasto.tipoDivision === 'igual' ? cuotaIgual : divisionDeudor.valor;
+    const yaPagado = (db.pagos || [])
+      .filter((p) => p.gastoId === gastoId && p.deId === deId)
+      .reduce((acc, p) => acc + p.monto, 0);
+    const pendiente = Math.max(0, cuota - yaPagado);
+    if (monto > pendiente + 0.05) {
+      throw {
+        status: 422,
+        message: `El monto ($${monto.toFixed(2)}) supera la deuda pendiente ($${pendiente.toFixed(2)}) para esta compra`,
+      };
+    }
+  }
+
   const nuevoPago = {
     id: siguienteId(db.pagos || []),
     deId,
@@ -46,7 +82,7 @@ export function crearPago(datos) {
     monto: redondear(monto),
     fecha: datos.fecha || hoy(),
     nota: (datos.nota || '').trim() || undefined,
-    gastoId: datos.gastoId ? Number(datos.gastoId) : undefined,
+    gastoId,
   };
 
   db.pagos = [nuevoPago, ...(db.pagos || [])];

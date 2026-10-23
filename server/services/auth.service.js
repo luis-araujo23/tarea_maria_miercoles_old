@@ -49,9 +49,27 @@ export function signup(datos) {
 
   const errores = {};
 
-  if (!nombre) errores.nombre = 'El nombre es obligatorio';
-  if (!email) errores.email = 'El correo es obligatorio';
-  if (!clave || clave.length < 4) errores.clave = 'La contraseña debe tener al menos 4 caracteres';
+  const EMAIL_RE = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+  if (!nombre) {
+    errores.nombre = 'El nombre es obligatorio';
+  } else if (/\d/.test(nombre)) {
+    errores.nombre = 'El nombre no puede contener números';
+  }
+
+  if (apellido && /\d/.test(apellido)) {
+    errores.apellido = 'El apellido no puede contener números';
+  }
+
+  if (!email) {
+    errores.email = 'El correo es obligatorio';
+  } else if (!EMAIL_RE.test(email)) {
+    errores.email = 'Ingresa un correo electrónico válido';
+  }
+
+  if (!clave || clave.length < 4) {
+    errores.clave = 'La contraseña debe tener al menos 4 caracteres';
+  }
 
   if (normalizar(nombre) === 'admin') {
     errores.nombre = 'Este nombre no está disponible';
@@ -88,7 +106,10 @@ export function signup(datos) {
   db.usuarios = [...(db.usuarios || []), nuevoUsuario];
 
   // Si no existe un compañero con ese nombre en el grupo, se crea automáticamente para poder participar en gastos
-  let companero = (db.companeros || []).find((c) => normalizar(c.nombre) === normalizar(nombre));
+  const nombreCompanero = [nombre, apellido].filter(Boolean).join(' ');
+  let companero = (db.companeros || []).find(
+    (c) => normalizar(c.nombre) === normalizar(nombreCompanero) || normalizar(c.nombre) === normalizar(nombre),
+  );
   if (!companero) {
     const mayor = (db.companeros || []).reduce((max, c) => {
       const num = Number.parseInt((c.id || '').replace(/\D/g, ''), 10);
@@ -96,10 +117,12 @@ export function signup(datos) {
     }, 0);
     companero = {
       id: `c${mayor + 1}`,
-      nombre,
+      nombre: nombreCompanero,
       usuarioId: nuevoUsuario.id,
     };
     db.companeros = [...(db.companeros || []), companero];
+  } else if (!companero.usuarioId) {
+    companero.usuarioId = nuevoUsuario.id;
   }
 
   guardarDb(db);

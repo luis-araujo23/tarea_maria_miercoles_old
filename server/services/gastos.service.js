@@ -40,12 +40,53 @@ export function crearGasto(datos) {
     throw { status: 422, message: 'Debes indicar quién pagó el gasto con un compañero válido' };
   }
 
+  const tiposPermitidos = ['igual', 'porcentaje', 'exacto'];
+  const tipoDivision = datos.tipoDivision || 'igual';
+  if (!tiposPermitidos.includes(tipoDivision)) {
+    throw { status: 422, message: `Tipo de división no válido: "${tipoDivision}". Debe ser igual, porcentaje o exacto.` };
+  }
+
   let divisiones = datos.divisiones;
   if (!Array.isArray(divisiones) || divisiones.length === 0) {
     // Si no se enviaron divisiones, se divide equitativamente entre todos los compañeros del grupo
     const n = db.companeros.length || 1;
     const cuota = redondear(monto / n);
     divisiones = db.companeros.map((c) => ({ companeroId: c.id, valor: cuota }));
+  } else {
+    // Validar que el pagador esté incluido entre los participantes
+    if (!divisiones.some((d) => d.companeroId === pagadoPorId)) {
+      throw { status: 422, message: 'El pagador debe estar incluido entre los participantes del gasto' };
+    }
+
+    // Validar cada participante
+    for (const d of divisiones) {
+      if (!db.companeros.some((c) => c.id === d.companeroId)) {
+        throw { status: 422, message: `El participante con ID "${d.companeroId}" no pertenece al grupo` };
+      }
+      if (typeof d.valor !== 'number' || Number.isNaN(d.valor) || d.valor < 0) {
+        throw { status: 422, message: 'Los valores de la división no pueden ser negativos ni inválidos' };
+      }
+    }
+
+    if (tipoDivision === 'porcentaje') {
+      const sumaPorcentajes = divisiones.reduce((acc, d) => acc + d.valor, 0);
+      if (Math.abs(sumaPorcentajes - 100) > 0.05) {
+        throw {
+          status: 422,
+          message: `Los porcentajes deben sumar 100% (suma actual: ${sumaPorcentajes.toFixed(1)}%)`,
+        };
+      }
+    }
+
+    if (tipoDivision === 'exacto') {
+      const sumaMontos = divisiones.reduce((acc, d) => acc + d.valor, 0);
+      if (Math.abs(sumaMontos - monto) > 0.05) {
+        throw {
+          status: 422,
+          message: `Los montos exactos deben sumar $${redondear(monto).toFixed(2)} (suma actual: $${sumaMontos.toFixed(2)})`,
+        };
+      }
+    }
   }
 
   const nuevoGasto = {
@@ -54,7 +95,7 @@ export function crearGasto(datos) {
     monto: redondear(monto),
     pagadoPorId,
     fecha: datos.fecha || hoy(),
-    tipoDivision: datos.tipoDivision || 'igual',
+    tipoDivision,
     divisiones,
     productoId: datos.productoId || undefined,
   };
@@ -124,6 +165,45 @@ export function actualizarGasto(id, datos) {
     throw { status: 422, message: 'El compañero que pagó no es válido' };
   }
 
+  const tipoDivision = datos.tipoDivision || db.gastos[indice].tipoDivision || 'igual';
+  const tiposPermitidos = ['igual', 'porcentaje', 'exacto'];
+  if (!tiposPermitidos.includes(tipoDivision)) {
+    throw { status: 422, message: `Tipo de división no válido: "${tipoDivision}"` };
+  }
+
+  let divisiones = datos.divisiones !== undefined ? datos.divisiones : db.gastos[indice].divisiones;
+  if (Array.isArray(divisiones) && divisiones.length > 0) {
+    if (!divisiones.some((d) => d.companeroId === pagadoPorId)) {
+      throw { status: 422, message: 'El pagador debe estar incluido entre los participantes del gasto' };
+    }
+    for (const d of divisiones) {
+      if (!db.companeros.some((c) => c.id === d.companeroId)) {
+        throw { status: 422, message: `El participante con ID "${d.companeroId}" no pertenece al grupo` };
+      }
+      if (typeof d.valor !== 'number' || Number.isNaN(d.valor) || d.valor < 0) {
+        throw { status: 422, message: 'Los valores de la división no pueden ser negativos ni inválidos' };
+      }
+    }
+    if (tipoDivision === 'porcentaje') {
+      const sumaPorcentajes = divisiones.reduce((acc, d) => acc + d.valor, 0);
+      if (Math.abs(sumaPorcentajes - 100) > 0.05) {
+        throw {
+          status: 422,
+          message: `Los porcentajes deben sumar 100% (suma actual: ${sumaPorcentajes.toFixed(1)}%)`,
+        };
+      }
+    }
+    if (tipoDivision === 'exacto') {
+      const sumaMontos = divisiones.reduce((acc, d) => acc + d.valor, 0);
+      if (Math.abs(sumaMontos - monto) > 0.05) {
+        throw {
+          status: 422,
+          message: `Los montos exactos deben sumar $${redondear(monto).toFixed(2)} (suma actual: $${sumaMontos.toFixed(2)})`,
+        };
+      }
+    }
+  }
+
   const gastoActualizado = {
     ...db.gastos[indice],
     ...datos,
@@ -131,6 +211,8 @@ export function actualizarGasto(id, datos) {
     descripcion,
     monto: redondear(monto),
     pagadoPorId,
+    tipoDivision,
+    divisiones,
   };
 
   db.gastos[indice] = gastoActualizado;

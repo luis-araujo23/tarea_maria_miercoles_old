@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import request from 'supertest'
-// @ts-expect-error Servidor Express en JS
 import app from '../../server/app.js'
-// @ts-expect-error Modelo DB en JS
 import { restaurarDb } from '../../server/models/db.model.js'
 
 describe('API REST — 5 Operaciones CRUD y Endpoints Express (Entrega 3)', () => {
@@ -114,6 +112,88 @@ describe('API REST — 5 Operaciones CRUD y Endpoints Express (Entrega 3)', () =
 
     expect(res.status).toBe(422)
     expect(res.body).toHaveProperty('error')
+  })
+
+  it('POST /api/gastos rechaza división porcentual que no suma 100% (422)', async () => {
+    const res = await request(app)
+      .post('/api/gastos')
+      .send({
+        descripcion: 'División inválida',
+        monto: 100,
+        pagadoPorId: 'c1',
+        tipoDivision: 'porcentaje',
+        divisiones: [
+          { companeroId: 'c1', valor: 40 },
+          { companeroId: 'c2', valor: 30 },
+        ],
+      })
+    expect(res.status).toBe(422)
+    expect(res.body).toHaveProperty('error')
+  })
+
+  it('POST /api/gastos rechaza división exacta que no suma el monto total (422)', async () => {
+    const res = await request(app)
+      .post('/api/gastos')
+      .send({
+        descripcion: 'Exacto descuadrado',
+        monto: 50,
+        pagadoPorId: 'c1',
+        tipoDivision: 'exacto',
+        divisiones: [
+          { companeroId: 'c1', valor: 20 },
+          { companeroId: 'c2', valor: 20 },
+        ],
+      })
+    expect(res.status).toBe(422)
+    expect(res.body).toHaveProperty('error')
+  })
+
+  it('POST /api/gastos rechaza división donde no participa el pagador (422)', async () => {
+    const res = await request(app)
+      .post('/api/gastos')
+      .send({
+        descripcion: 'Sin pagador',
+        monto: 30,
+        pagadoPorId: 'c1',
+        tipoDivision: 'igual',
+        divisiones: [
+          { companeroId: 'c2', valor: 15 },
+          { companeroId: 'c3', valor: 15 },
+        ],
+      })
+    expect(res.status).toBe(422)
+    expect(res.body).toHaveProperty('error')
+  })
+
+  it('POST /api/pagos rechaza que un compañero se pague a sí mismo (422)', async () => {
+    const res = await request(app)
+      .post('/api/pagos')
+      .send({ deId: 'c1', paraId: 'c1', monto: 10 })
+    expect(res.status).toBe(422)
+    expect(res.body.error).toMatch(/mismo/i)
+  })
+
+  it('POST /api/pagos rechaza pago asociado a gasto inexistente (422)', async () => {
+    const res = await request(app)
+      .post('/api/pagos')
+      .send({ deId: 'c2', paraId: 'c1', monto: 10, gastoId: 999999 })
+    expect(res.status).toBe(422)
+    expect(res.body).toHaveProperty('error')
+  })
+
+  it('POST /api/auth/login rechaza credenciales incorrectas (401)', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ identificador: 'admin@ujap.edu.ve', clave: 'clave_invalida' })
+    expect(res.status).toBe(401)
+    expect(res.body.ok).toBe(false)
+  })
+
+  it('POST /api/categorias rechaza nombre vacío (422)', async () => {
+    const res = await request(app)
+      .post('/api/categorias')
+      .send({ nombre: '' })
+    expect(res.status).toBe(422)
   })
 
   // 8. Módulos complementarios de la API

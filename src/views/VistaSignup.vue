@@ -86,7 +86,7 @@ async function handleSubmit() {
 
   cargando.value = true
 
-  const resultado = signup(nombre.value, apellido.value, email.value, password.value)
+  const resultado = await signup(nombre.value, apellido.value, email.value, password.value)
 
   if (!resultado.ok) {
     cargando.value = false

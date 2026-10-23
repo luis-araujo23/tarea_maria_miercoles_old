@@ -387,16 +387,33 @@ El proyecto cuenta con una suite completa de pruebas unitarias y de integración
 npm test
 ```
 
-### Cobertura de Pruebas:
-1. **Pruebas de Integración de la API (Supertest):**
+### Cobertura de Pruebas (52 pruebas pasando):
+1. **Pruebas de Integración de la API (Supertest — 20 pruebas):**
    - `tests/api/gastos-crud.test.ts`
    - Verifica el endpoint de salud `GET /api/health` (status `200`).
    - Valida el ciclo de vida completo de las **5 operaciones CRUD** sobre `/api/gastos` (`GET`, `POST`, `GET /:id`, `PUT /:id`, `DELETE /:id`).
-   - Verifica validaciones de negocio en el backend (status `422` al omitir descripción, montos negativos o compañeros inexistentes).
+   - Valida las reglas de negocio estrictas en el backend (status `422`):
+     - Rechazo de descripciones vacías o ausentes.
+     - Rechazo de montos negativos o iguales a cero.
+     - Rechazo de compañeros pagadores inválidos o no pertenecientes al grupo.
+     - Rechazo de divisiones porcentuales que no sumen exactamente el 100%.
+     - Rechazo de divisiones por montos exactos que no sumen el monto total del gasto.
+     - Rechazo de divisiones en las cuales el pagador original no esté incluido.
+     - Rechazo de pagos entre el mismo usuario (autopago).
+     - Rechazo de abonos asociados a gastos inexistentes o que superen la deuda pendiente.
+     - Rechazo de nombres vacíos en categorías y credenciales inválidas en autenticación (status `401`).
    - Valida los endpoints de catálogo (`/api/productos`, `/api/categorias`, `/api/companeros`) y eventos NoSQL (`/api/notificaciones`).
-2. **Pruebas Unitarias de Frontend (Vitest):**
-   - `tests/unit/balances.test.ts`
-   - Valida los algoritmos de cálculo de cuotas equitativas (`igual`), porcentuales (`porcentaje`) y por montos exactos (`exacto`).
+2. **Pruebas Unitarias de Frontend (Vitest — 32 pruebas):**
+   - `tests/unit/balances.test.ts` (4 pruebas):
+     - Valida algoritmos de cálculo de cuotas equitativas (`igual`), porcentuales (`porcentaje`), montos exactos (`exacto`) y participantes excluidos.
+   - `tests/unit/validaciones.test.ts` (28 pruebas):
+     - Valida nombres de compañeros (longitud, caracteres especiales, vacíos).
+     - Valida nombres de personas y apellidos (sin números, longitud mínima y máxima).
+     - Valida formato de correos institucionales y rechazo de espacios.
+     - Valida políticas de contraseñas (mínimo 8 caracteres, alfanumérico) y confirmación de clave.
+     - Valida payload de gastos, montos positivos, asignación de participantes y cuadre de divisiones.
+     - Valida creación/edición de categorías y productos (precios positivos, categorías existentes, prevención de nombres duplicados).
+     - Valida registro de abonos y límites de deuda pendiente.
 
 
 ---
@@ -439,7 +456,7 @@ tarea_maria_miercoles_old/
 │   └── main.ts                <- Punto de entrada de la aplicación Vue
 ├── tests/                     <- Suite de pruebas automatizadas (Clase 12)
 │   ├── api/                   <- Pruebas de integración con Supertest (CRUD completo)
-│   └── unit/                  <- Pruebas unitarias de frontend con Vitest
+│   └── unit/                  <- Pruebas unitarias de frontend con Vitest (balances y validaciones)
 ├── .env                       <- Variables de entorno activas
 ├── .env.example               <- Plantilla de variables de entorno
 ├── index.html                 <- Punto de entrada HTML de Vite

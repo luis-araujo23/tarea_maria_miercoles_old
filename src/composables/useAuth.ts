@@ -189,33 +189,36 @@ export function useAuth() {
     )
   }
 
-  function login(identificador: string, clave: string): boolean {
+  async function login(identificador: string, clave: string): Promise<boolean> {
+    try {
+      const res = await enviarJson<{ ok: boolean; usuario: Usuario }>('auth/login', 'POST', {
+        identificador,
+        clave,
+      })
+      if (res?.ok && res.usuario) {
+        usuario.value = res.usuario
+        guardarUsuario(res.usuario)
+        return true
+      }
+    } catch {
+      // Fallback a cuentas locales
+    }
+
     const cuenta = buscarCuenta(identificador, clave)
     if (!cuenta) return false
 
     const sesion = sesionDeCuenta(cuenta)
     usuario.value = sesion
     guardarUsuario(sesion)
-
-    // Sincronizar sesión con backend en segundo plano
-    enviarJson<{ ok: boolean; usuario: Usuario }>('auth/login', 'POST', { identificador, clave })
-      .then((res) => {
-        if (res?.usuario) {
-          usuario.value = res.usuario
-          guardarUsuario(res.usuario)
-        }
-      })
-      .catch(() => null)
-
     return true
   }
 
-  function signup(
+  async function signup(
     nombre: string,
     apellido: string,
     email: string,
     clave: string,
-  ): ResultadoSignup {
+  ): Promise<ResultadoSignup> {
     const nombreLimpio = limpiarTexto(nombre)
     const apellidoLimpio = limpiarTexto(apellido)
     const emailLimpio = normalizarEmail(email)
@@ -223,25 +226,52 @@ export function useAuth() {
     const errores: ResultadoSignup['errores'] = {}
 
     if (normalizarNombre(nombreLimpio) === 'admin') {
-      errores.nombre = 'Este nombre no esta disponible'
+      errores.nombre = 'Este nombre no está disponible'
     }
 
     const ocupadoNombre = todasLasCuentas().some(
       (c) => normalizarNombre(nombreVisible(c)) === normalizarNombre(visible),
     )
     if (!errores.nombre && ocupadoNombre) {
-      errores.apellido = 'Este nombre y apellido ya estan registrados'
+      errores.apellido = 'Este nombre y apellido ya están registrados'
     }
 
     const ocupadoEmail = todasLasCuentas().some(
       (c) => normalizarEmail(c.email) === emailLimpio,
     )
     if (ocupadoEmail) {
-      errores.email = 'Este correo ya esta registrado'
+      errores.email = 'Este correo ya está registrado'
     }
 
     if (Object.keys(errores).length > 0) {
       return { ok: false, errores }
+    }
+
+    try {
+      const res = await enviarJson<{ ok: boolean; usuario: Usuario }>('auth/signup', 'POST', {
+        nombre: nombreLimpio,
+        apellido: apellidoLimpio,
+        email: emailLimpio,
+        clave,
+      })
+
+      if (res?.ok && res.usuario) {
+        const nueva: Cuenta = {
+          nombre: nombreLimpio,
+          apellido: apellidoLimpio,
+          email: emailLimpio,
+          clave,
+          rol: 'usuario',
+        }
+        cuentasRegistradas.value = [...cuentasRegistradas.value, nueva]
+        guardarCuentasRegistradas(cuentasRegistradas.value)
+
+        usuario.value = res.usuario
+        guardarUsuario(res.usuario)
+        return { ok: true, errores: {} }
+      }
+    } catch {
+      // Fallback a almacenamiento local si el backend no responde
     }
 
     const nueva: Cuenta = {
@@ -258,21 +288,6 @@ export function useAuth() {
     const sesion = sesionDeCuenta(nueva)
     usuario.value = sesion
     guardarUsuario(sesion)
-
-    // Enviar registro al backend Express para que esté disponible en todas las PCs
-    enviarJson<{ ok: boolean; usuario: Usuario }>('auth/signup', 'POST', {
-      nombre: nombreLimpio,
-      apellido: apellidoLimpio,
-      email: emailLimpio,
-      clave,
-    })
-      .then((res) => {
-        if (res?.usuario?.companeroId) {
-          usuario.value = { ...usuario.value!, companeroId: res.usuario.companeroId }
-          guardarUsuario(usuario.value)
-        }
-      })
-      .catch(() => null)
 
     return { ok: true, errores: {} }
   }
