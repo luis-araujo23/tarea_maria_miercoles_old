@@ -179,7 +179,7 @@ function cerrarSesion() {
     <ModalConfirmacion
       :visible="restauracionVisible"
       titulo="Restaurar datos del servidor"
-      mensaje="Se volveran a descargar los gastos, companeros y categorias originales. Los cambios que hiciste en este navegador se perderan."
+      mensaje="Se volveran a descargar los gastos, compañeros y categorias originales. Los cambios que hiciste en este navegador se perderan."
       confirmar-texto="Restaurar"
       @confirmar="restaurar"
       @cancelar="restauracionVisible = false"

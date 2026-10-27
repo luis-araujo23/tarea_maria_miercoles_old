@@ -47,7 +47,7 @@ function handleSubmit() {
       <div class="auth-brand">
         <UjapLogo :size="56" />
         <h1>UJAP Split</h1>
-        <p>Divide gastos con tus companeros</p>
+        <p>Divide gastos con tus compañeros</p>
       </div>
 
       <form class="auth-form" @submit.prevent="handleSubmit">

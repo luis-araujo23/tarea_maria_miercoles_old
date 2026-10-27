@@ -12,7 +12,7 @@ import UjapLogo from './UjapLogo.vue'
             <span class="footer-brand-name">UJAP Split</span>
           </div>
           <p class="footer-desc">
-            Herramienta para dividir gastos con companeros de universidad.
+            Herramienta para dividir gastos con compañeros de universidad.
             Facil, rapido y transparente.
           </p>
         </div>
