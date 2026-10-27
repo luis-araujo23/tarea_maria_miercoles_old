@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Gasto } from '../types'
+import { calcularBalances } from '../utils/balances'
+import { gastosACSV, balancesACSV, descargarCSV } from '../utils/exportar'
 import { useAppStore } from '../composables/useAppStore'
 import GastoCard from '../components/GastoCard.vue'
 import ResumenGastos from '../components/ResumenGastos.vue'
@@ -42,6 +44,31 @@ const confirmacion = ref({
 })
 
 const puedeAgregarGastos = computed(() => companeros.value.length > 0)
+
+const hoyParaArchivo = (): string => new Date().toISOString().slice(0, 10)
+
+const nombresCompaneros = computed(() =>
+  Object.fromEntries(companeros.value.map((c) => [c.id, c.nombre])),
+)
+
+function exportarGastos() {
+  descargarCSV(
+    gastosACSV(gastos.value, nombresCompaneros.value),
+    `gastos-${hoyParaArchivo()}.csv`,
+  )
+}
+
+function exportarBalances() {
+  const balances = calcularBalances(gastos.value, pagos.value, companeros.value)
+  const conNombres = balances.map((b) => ({
+    ...b,
+    companeroId: nombresCompaneros.value[b.companeroId] ?? b.companeroId,
+  }))
+  descargarCSV(
+    balancesACSV(conNombres),
+    `balances-${hoyParaArchivo()}.csv`,
+  )
+}
 
 const gastosOrdenados = computed(() =>
   [...gastos.value].sort(
@@ -164,6 +191,24 @@ function limpiarGastos() {
             <p class="section-subtitle">Calculo I — Semestre 2026</p>
           </div>
           <span class="badge-count">{{ gastos.length }}</span>
+          <div class="export-actions">
+            <button
+              type="button"
+              class="btn-export"
+              :disabled="guardando"
+              @click="exportarGastos"
+            >
+              Exportar gastos CSV
+            </button>
+            <button
+              type="button"
+              class="btn-export"
+              :disabled="guardando"
+              @click="exportarBalances"
+            >
+              Exportar balances CSV
+            </button>
+          </div>
         </div>
 
         <div v-if="gastos.length === 0" class="empty-state">
@@ -292,6 +337,33 @@ function limpiarGastos() {
   font-size: 0.8rem;
   font-weight: 700;
   padding: 0 0.5rem;
+}
+
+.export-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-export {
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  font-family: inherit;
+  background: var(--color-bg-muted);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.btn-export:hover:not(:disabled) {
+  background: var(--color-border);
+}
+
+.btn-export:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .empty-state {
