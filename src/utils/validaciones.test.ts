@@ -100,6 +100,18 @@ describe('validarGasto', () => {
       validarGasto(gastoValido({ pagadoPorId: 'c9' }), companeros),
     ).toContain('El pagador no existe en el grupo')
   })
+
+  it('rechaza fecha futura', () => {
+    expect(
+      validarGasto(gastoValido({ fecha: '2099-12-31' }), companeros),
+    ).toContain('futura')
+  })
+
+  it('acepta fechas pasadas', () => {
+    expect(
+      validarGasto(gastoValido({ fecha: '2020-01-01' }), companeros),
+    ).toBeNull()
+  })
 })
 
 describe('validarCategoria', () => {

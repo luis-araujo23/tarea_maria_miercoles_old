@@ -119,6 +119,13 @@ export function validarGasto(
 
   if (!payload.fecha) return 'Selecciona una fecha'
 
+  const fechaGasto = new Date(payload.fecha)
+  const hoyFin = new Date()
+  hoyFin.setHours(23, 59, 59, 999)
+  if (fechaGasto > hoyFin) {
+    return 'La fecha no puede ser futura'
+  }
+
   if (!payload.divisiones.some((d) => d.companeroId === payload.pagadoPorId)) {
     return 'El pagador debe estar incluido entre los participantes'
   }
