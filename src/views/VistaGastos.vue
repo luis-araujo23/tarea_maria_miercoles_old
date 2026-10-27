@@ -70,6 +70,35 @@ function exportarBalances() {
   )
 }
 
+/** Filtros de la lista de gastos. */
+const busqueda = ref('')
+const filtroCompanero = ref('')
+const fechaDesde = ref('')
+const fechaHasta = ref('')
+
+const gastosFiltrados = computed(() => {
+  const q = busqueda.value.trim().toLowerCase()
+  const desde = fechaDesde.value ? new Date(fechaDesde.value) : null
+  const hasta = fechaHasta.value ? new Date(fechaHasta.value) : null
+
+  return gastosOrdenados.value.filter((gasto) => {
+    if (q && !gasto.descripcion.toLowerCase().includes(q)) return false
+    if (filtroCompanero.value && gasto.pagadoPorId !== filtroCompanero.value)
+      return false
+    const fecha = new Date(gasto.fecha)
+    if (desde && fecha < desde) return false
+    if (hasta && fecha > hasta) return false
+    return true
+  })
+})
+
+function limpiarFiltros() {
+  busqueda.value = ''
+  filtroCompanero.value = ''
+  fechaDesde.value = ''
+  fechaHasta.value = ''
+}
+
 const gastosOrdenados = computed(() =>
   [...gastos.value].sort(
     (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
@@ -211,10 +240,49 @@ function limpiarGastos() {
           </div>
         </div>
 
-        <div v-if="gastos.length === 0" class="empty-state">
-          <div class="empty-illustration">📋</div>
-          <h3>Sin gastos registrados</h3>
-          <p>Agrega copias, lapices, videobeam u otros materiales universitarios.</p>
+        <div class="filtros" v-if="companeros.length">
+          <label class="field filtro-campo">
+            <span>Buscar descripción</span>
+            <input
+              v-model="busqueda"
+              type="search"
+              placeholder="Ej: copias, videobeam..."
+            />
+          </label>
+          <label class="field filtro-campo">
+            <span>Pagado por</span>
+            <select v-model="filtroCompanero">
+              <option value="">Todos</option>
+              <option v-for="c in companeros" :key="c.id" :value="c.id">
+                {{ c.nombre }}
+              </option>
+            </select>
+          </label>
+          <label class="field filtro-campo">
+            <span>Desde</span>
+            <input v-model="fechaDesde" type="date" />
+          </label>
+          <label class="field filtro-campo">
+            <span>Hasta</span>
+            <input v-model="fechaHasta" type="date" />
+          </label>
+          <button
+            type="button"
+            class="btn-cancel"
+            :disabled="guardando"
+            @click="limpiarFiltros"
+          >
+            Limpiar filtros
+          </button>
+        </div>
+
+        <div v-if="gastosFiltrados.length === 0" class="empty-state">
+          <div class="empty-illustration">🔍</div>
+          <h3>Sin gastos que coincidan</h3>
+          <p>
+            Ajusta la búsqueda, el compañero o el rango de fechas, o
+            registra un nuevo gasto.
+          </p>
           <button
             type="button"
             class="btn-cta"
@@ -227,7 +295,7 @@ function limpiarGastos() {
 
         <div v-else class="cards-container">
           <GastoCard
-            v-for="gasto in gastosOrdenados"
+            v-for="gasto in gastosFiltrados"
             :key="gasto.id"
             :gasto="gasto"
             :companeros="companeros"
@@ -457,6 +525,40 @@ function limpiarGastos() {
   box-shadow: var(--shadow-lg);
   z-index: 50;
   line-height: 1;
+}
+
+.filtros {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  background: var(--color-bg-muted);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+}
+
+.filtro-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0;
+}
+
+.filtro-campo span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.filtro-campo input,
+.filtro-campo select {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.9rem;
 }
 
 @media (max-width: 768px) {
