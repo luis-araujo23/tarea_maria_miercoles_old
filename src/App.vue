@@ -15,11 +15,23 @@
 <script setup lang="ts">
 import ToastGlobal from './components/ToastGlobal.vue'
 import { useTema } from './composables/useTema'
+import { useAtajosTeclado } from './composables/useAtajosTeclado'
 
 const t = useTema()
 const tema = t.tema
 const esOscuro = t.esOscuro
 const setTema = t.setTema
+
+const { registrar } = useAtajosTeclado()
+registrar('nuevo-gasto', () => {
+  window.dispatchEvent(new CustomEvent('atajo:nuevo-gasto'))
+})
+registrar('cerrar-modales', () => {
+  window.dispatchEvent(new CustomEvent('atajo:cerrar-modales'))
+})
+registrar('enfocar-buscador', () => {
+  window.dispatchEvent(new CustomEvent('atajo:enfocar-buscador'))
+})
 </script>
 
 <style scoped>

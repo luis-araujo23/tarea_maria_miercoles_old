@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import type { Gasto } from '../types'
 import { calcularBalances } from '../utils/balances'
 import { gastosACSV, balancesACSV, descargarCSV } from '../utils/exportar'
@@ -107,6 +107,29 @@ function limpiarFiltros() {
   fechaDesde.value = ''
   fechaHasta.value = ''
 }
+
+/** Ref al input de busqueda para enfocarlo con Ctrl/Cmd + F. */
+const inputBusqueda = ref<HTMLInputElement | null>(null)
+
+function enfocarBuscador() {
+  inputBusqueda.value?.focus()
+}
+
+function onAtajoNuevoGasto() {
+  abrirFormulario()
+}
+
+onMounted(() => {
+  window.addEventListener('atajo:nuevo-gasto', onAtajoNuevoGasto)
+  window.addEventListener('atajo:cerrar-modales', cerrarFormulario)
+  window.addEventListener('atajo:enfocar-buscador', enfocarBuscador)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('atajo:nuevo-gasto', onAtajoNuevoGasto)
+  window.removeEventListener('atajo:cerrar-modales', cerrarFormulario)
+  window.removeEventListener('atajo:enfocar-buscador', enfocarBuscador)
+})
 
 const gastosOrdenados = computed(() =>
   [...gastos.value].sort(
@@ -270,6 +293,7 @@ function limpiarGastos() {
           <label class="field filtro-campo">
             <span>Buscar descripción</span>
             <input
+              ref="inputBusqueda"
               v-model="busqueda"
               type="search"
               placeholder="Ej: copias, videobeam..."
