@@ -4,6 +4,7 @@ import type { Gasto } from '../types'
 import { calcularBalances } from '../utils/balances'
 import { gastosACSV, balancesACSV, descargarCSV } from '../utils/exportar'
 import { useAppStore } from '../composables/useAppStore'
+import { useMoneda } from '../composables/useMoneda'
 import GastoCard from '../components/GastoCard.vue'
 import ResumenGastos from '../components/ResumenGastos.vue'
 import FormularioGasto from '../components/FormularioGasto.vue'
@@ -44,6 +45,14 @@ const confirmacion = ref({
 })
 
 const puedeAgregarGastos = computed(() => companeros.value.length > 0)
+
+const {
+  moneda,
+  setMoneda,
+  MONEDAS,
+  disponible,
+  cargando: cargandoTasa,
+} = useMoneda()
 
 const hoyParaArchivo = (): string => new Date().toISOString().slice(0, 10)
 
@@ -237,6 +246,23 @@ function limpiarGastos() {
             >
               Exportar balances CSV
             </button>
+          </div>
+          <div class="moneda-selector">
+            <label for="moneda" class="moneda-label">Moneda</label>
+            <select
+              id="moneda"
+              v-model="moneda"
+              class="moneda-select"
+              :disabled="guardando"
+            >
+              <option
+                v-for="(info, clave) in MONEDAS"
+                :key="clave"
+                :value="clave"
+              >
+                {{ info.simbolo }} — {{ info.nombre }}
+              </option>
+            </select>
           </div>
         </div>
 
@@ -559,6 +585,42 @@ function limpiarGastos() {
   border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 0.9rem;
+}
+
+.moneda-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: 1rem;
+  padding: 0.4rem 0.8rem;
+  background: var(--color-bg-muted);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.moneda-label {
+  font-weight: 600;
+  margin: 0;
+}
+
+.moneda-select {
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  outline: none;
+}
+
+.moneda-select:focus {
+  color: var(--ujap-blue);
+}
+
+.moneda-select option {
+  background: var(--color-bg-card);
+  color: var(--color-text);
 }
 
 @media (max-width: 768px) {
