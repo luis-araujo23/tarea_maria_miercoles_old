@@ -65,3 +65,26 @@ La navegación usa Vue Router, así que cambiar de pantalla no recarga la págin
 | `/app/gastos/:id` | Detalle de un gasto (ruta dinámica) | Admin |
 
 Si alguien entra sin sesión a una ruta privada, se le redirige al login. Si un usuario normal intenta abrir una ruta de admin, se le redirige a Materiales.
+
+## Datos (API simulada)
+
+La app no tiene backend propio: los datos iniciales son archivos JSON en `public/api/` (`gastos`, `pagos`, `companeros`, `categorias` y `productos`).
+
+- Se piden con `fetch` y `async/await` en `src/services/clienteHttp.ts`, con tiempo límite, un reintento y mensajes de error claros.
+- Mientras cargan, las pantallas muestran un indicador de carga; si fallan, muestran el error y un botón para reintentar.
+- Los cambios (compras, pagos, materiales) pasan por `src/services/apiUjapSplit.ts`, que los valida y los guarda en el `localStorage` del navegador.
+- El botón ⟳ junto al indicador "Datos" del encabezado descarta esos cambios y vuelve a cargar los datos originales.
+
+## Estructura del proyecto
+
+```text
+public/api/         Datos iniciales en JSON (API simulada)
+src/components/     Componentes reutilizables
+src/composables/    Estado compartido, sesión y tasa de cambio
+src/router/         Rutas y protección por rol
+src/services/       Cliente HTTP y API simulada
+src/types/          Tipos de TypeScript
+src/utils/          Cálculo de deudas, validaciones y utilidades
+src/views/          Pantallas de la app
+laboratorio-datos/  Diagrama entidad-relación, script SQL y ejemplo NoSQL
+```
