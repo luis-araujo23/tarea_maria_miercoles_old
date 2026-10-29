@@ -11,3 +11,23 @@ Hecha con **Vue 3**, **TypeScript**, **Vue Router** y **Vite**.
 - Barra de progreso que muestra cuánto ha pagado cada compañero de su deuda.
 - Dashboard de administración con ventas, dinero cobrado y saldos pendientes.
 - Conversión de montos a bolívares con la tasa del día.
+
+## Instalación
+
+Requiere [Node.js](https://nodejs.org/) instalado.
+
+```sh
+npm install
+npm run dev
+```
+
+Luego abre en el navegador la dirección que muestra la terminal (normalmente `http://localhost:5173`).
+
+## Comandos
+
+| Comando | Qué hace |
+|---|---|
+| `npm run dev` | Inicia el servidor de desarrollo con recarga automática. |
+| `npm run type-check` | Revisa los tipos de TypeScript. |
+| `npm run build` | Revisa los tipos y genera la versión de producción en `dist/`. |
+| `npm run preview` | Sirve localmente la versión de producción. |
