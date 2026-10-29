@@ -22,7 +22,7 @@ import UjapLogo from './UjapLogo.vue'
           <ul>
             <li><a href="#">Acerca de</a></li>
             <li><a href="#">Funcionalidades</a></li>
-            <li><a href="#">Como funciona</a></li>
+            <li><a href="#">Cómo funciona</a></li>
             <li><a href="#">Seguridad</a></li>
           </ul>
         </div>
@@ -30,10 +30,10 @@ import UjapLogo from './UjapLogo.vue'
         <div class="footer-col">
           <h4>Cuenta</h4>
           <ul>
-            <li><router-link to="/login">Iniciar sesion</router-link></li>
+            <li><router-link to="/login">Iniciar sesión</router-link></li>
             <li><router-link to="/signup">Crear cuenta</router-link></li>
-            <li><a href="#">Configuracion</a></li>
-            <li><a href="#">Cerrar sesion</a></li>
+            <li><a href="#">Configuración</a></li>
+            <li><a href="#">Cerrar sesión</a></li>
           </ul>
         </div>
 
@@ -42,8 +42,8 @@ import UjapLogo from './UjapLogo.vue'
           <ul>
             <li><a href="#">Contacto</a></li>
             <li><a href="#">Preguntas frecuentes</a></li>
-            <li><a href="#">Terminos de uso</a></li>
-            <li><a href="#">Politica de privacidad</a></li>
+            <li><a href="#">Términos de uso</a></li>
+            <li><a href="#">Política de privacidad</a></li>
           </ul>
         </div>
       </div>
@@ -52,7 +52,7 @@ import UjapLogo from './UjapLogo.vue'
     <div class="footer-bottom">
       <div class="footer-bottom-inner">
         <p>&copy; {{ new Date().getFullYear() }} UJAP Split. Proyecto academico — Ingenieria de Software.</p>
-        <p class="footer-made">Hecho con dedicacion en la UJAP.</p>
+        <p class="footer-made">Hecho con dedicación en la UJAP.</p>
       </div>
     </div>
   </footer>
