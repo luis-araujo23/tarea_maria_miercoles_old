@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import type { Gasto } from '../types'
+import { calcularBalances } from '../utils/balances'
+import { gastosACSV, balancesACSV, descargarCSV } from '../utils/exportar'
 import { useAppStore } from '../composables/useAppStore'
+import { useMoneda } from '../composables/useMoneda'
 import GastoCard from '../components/GastoCard.vue'
 import ResumenGastos from '../components/ResumenGastos.vue'
 import FormularioGasto from '../components/FormularioGasto.vue'
@@ -42,6 +45,91 @@ const confirmacion = ref({
 })
 
 const puedeAgregarGastos = computed(() => companeros.value.length > 0)
+
+const {
+  moneda,
+  setMoneda,
+  MONEDAS,
+  disponible,
+  cargando: cargandoTasa,
+} = useMoneda()
+
+const hoyParaArchivo = (): string => new Date().toISOString().slice(0, 10)
+
+const nombresCompaneros = computed(() =>
+  Object.fromEntries(companeros.value.map((c) => [c.id, c.nombre])),
+)
+
+function exportarGastos() {
+  descargarCSV(
+    gastosACSV(gastos.value, nombresCompaneros.value),
+    `gastos-${hoyParaArchivo()}.csv`,
+  )
+}
+
+function exportarBalances() {
+  const balances = calcularBalances(gastos.value, pagos.value, companeros.value)
+  const conNombres = balances.map((b) => ({
+    ...b,
+    companeroId: nombresCompaneros.value[b.companeroId] ?? b.companeroId,
+  }))
+  descargarCSV(
+    balancesACSV(conNombres),
+    `balances-${hoyParaArchivo()}.csv`,
+  )
+}
+
+/** Filtros de la lista de gastos. */
+const busqueda = ref('')
+const filtroCompanero = ref('')
+const fechaDesde = ref('')
+const fechaHasta = ref('')
+
+const gastosFiltrados = computed(() => {
+  const q = busqueda.value.trim().toLowerCase()
+  const desde = fechaDesde.value ? new Date(fechaDesde.value) : null
+  const hasta = fechaHasta.value ? new Date(fechaHasta.value) : null
+
+  return gastosOrdenados.value.filter((gasto) => {
+    if (q && !gasto.descripcion.toLowerCase().includes(q)) return false
+    if (filtroCompanero.value && gasto.pagadoPorId !== filtroCompanero.value)
+      return false
+    const fecha = new Date(gasto.fecha)
+    if (desde && fecha < desde) return false
+    if (hasta && fecha > hasta) return false
+    return true
+  })
+})
+
+function limpiarFiltros() {
+  busqueda.value = ''
+  filtroCompanero.value = ''
+  fechaDesde.value = ''
+  fechaHasta.value = ''
+}
+
+/** Ref al input de busqueda para enfocarlo con Ctrl/Cmd + F. */
+const inputBusqueda = ref<HTMLInputElement | null>(null)
+
+function enfocarBuscador() {
+  inputBusqueda.value?.focus()
+}
+
+function onAtajoNuevoGasto() {
+  abrirFormulario()
+}
+
+onMounted(() => {
+  window.addEventListener('atajo:nuevo-gasto', onAtajoNuevoGasto)
+  window.addEventListener('atajo:cerrar-modales', cerrarFormulario)
+  window.addEventListener('atajo:enfocar-buscador', enfocarBuscador)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('atajo:nuevo-gasto', onAtajoNuevoGasto)
+  window.removeEventListener('atajo:cerrar-modales', cerrarFormulario)
+  window.removeEventListener('atajo:enfocar-buscador', enfocarBuscador)
+})
 
 const gastosOrdenados = computed(() =>
   [...gastos.value].sort(
@@ -164,12 +252,87 @@ function limpiarGastos() {
             <p class="section-subtitle">Calculo I — Semestre 2026</p>
           </div>
           <span class="badge-count">{{ gastos.length }}</span>
+          <div class="export-actions">
+            <button
+              type="button"
+              class="btn-export"
+              :disabled="guardando"
+              @click="exportarGastos"
+            >
+              Exportar gastos CSV
+            </button>
+            <button
+              type="button"
+              class="btn-export"
+              :disabled="guardando"
+              @click="exportarBalances"
+            >
+              Exportar balances CSV
+            </button>
+          </div>
+          <div class="moneda-selector">
+            <label for="moneda" class="moneda-label">Moneda</label>
+            <select
+              id="moneda"
+              v-model="moneda"
+              class="moneda-select"
+              :disabled="guardando"
+            >
+              <option
+                v-for="(info, clave) in MONEDAS"
+                :key="clave"
+                :value="clave"
+              >
+                {{ info.simbolo }} — {{ info.nombre }}
+              </option>
+            </select>
+          </div>
         </div>
 
-        <div v-if="gastos.length === 0" class="empty-state">
-          <div class="empty-illustration">📋</div>
-          <h3>Sin gastos registrados</h3>
-          <p>Agrega copias, lapices, videobeam u otros materiales universitarios.</p>
+        <div class="filtros" v-if="companeros.length">
+          <label class="field filtro-campo">
+            <span>Buscar descripción</span>
+            <input
+              ref="inputBusqueda"
+              v-model="busqueda"
+              type="search"
+              placeholder="Ej: copias, videobeam..."
+            />
+          </label>
+          <label class="field filtro-campo">
+            <span>Pagado por</span>
+            <select v-model="filtroCompanero">
+              <option value="">Todos</option>
+              <option v-for="c in companeros" :key="c.id" :value="c.id">
+                {{ c.nombre }}
+              </option>
+            </select>
+          </label>
+          <label class="field filtro-campo">
+            <span>Desde</span>
+            <input v-model="fechaDesde" type="date" />
+          </label>
+          <label class="field filtro-campo">
+            <span>Hasta</span>
+            <input v-model="fechaHasta" type="date" />
+          </label>
+          <button
+            type="button"
+            class="btn-cancel"
+            :disabled="guardando"
+            @click="limpiarFiltros"
+          >
+            Limpiar filtros
+          </button>
+        </div>
+
+        <div v-if="gastosFiltrados.length === 0" class="empty-state">
+          <div class="empty-illustration">🔍</div>
+          <h3>Sin gastos que coincidan</h3>
+          <p>
+            Ajusta la búsqueda, el compañero o el rango de fechas, o
+            registra un nuevo gasto.
+          </p>
           <button
             type="button"
             class="btn-cta"
@@ -182,7 +345,7 @@ function limpiarGastos() {
 
         <div v-else class="cards-container">
           <GastoCard
-            v-for="gasto in gastosOrdenados"
+            v-for="gasto in gastosFiltrados"
             :key="gasto.id"
             :gasto="gasto"
             :companeros="companeros"
@@ -294,6 +457,33 @@ function limpiarGastos() {
   padding: 0 0.5rem;
 }
 
+.export-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-export {
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  font-family: inherit;
+  background: var(--color-bg-muted);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.btn-export:hover:not(:disabled) {
+  background: var(--color-border);
+}
+
+.btn-export:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .empty-state {
   background: var(--color-bg-card);
   border-radius: var(--radius-lg);
@@ -385,6 +575,76 @@ function limpiarGastos() {
   box-shadow: var(--shadow-lg);
   z-index: 50;
   line-height: 1;
+}
+
+.filtros {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  background: var(--color-bg-muted);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+}
+
+.filtro-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0;
+}
+
+.filtro-campo span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.filtro-campo input,
+.filtro-campo select {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.moneda-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: 1rem;
+  padding: 0.4rem 0.8rem;
+  background: var(--color-bg-muted);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.moneda-label {
+  font-weight: 600;
+  margin: 0;
+}
+
+.moneda-select {
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  outline: none;
+}
+
+.moneda-select:focus {
+  color: var(--ujap-blue);
+}
+
+.moneda-select option {
+  background: var(--color-bg-card);
+  color: var(--color-text);
 }
 
 @media (max-width: 768px) {

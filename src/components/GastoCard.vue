@@ -5,10 +5,12 @@ import { getAvatarColor, getInitials } from '../utils/avatars'
 import { etiquetaDivision } from '../utils/balances'
 import { getCategoryIcon } from '../utils/categorias'
 import { useAppStore } from '../composables/useAppStore'
-import { useTasaCambio } from '../composables/useTasaCambio'
+import { useMoneda } from '../composables/useMoneda'
 
 const { categorias } = useAppStore()
-const { cargando, disponible, formatearBolivares } = useTasaCambio()
+const m = useMoneda()
+const { cargando, disponible, formatearMonto } = m
+const monedaActiva = computed(() => m.moneda.value)
 
 const props = defineProps<{
   gasto: Gasto
@@ -30,7 +32,7 @@ const divisionTexto = computed(() =>
   etiquetaDivision(props.gasto.tipoDivision, props.gasto.divisiones, props.companeros)
 )
 
-const montoEnBolivares = computed(() => formatearBolivares(props.gasto.monto))
+const montoFormateado = computed(() => formatearMonto(props.gasto.monto))
 </script>
 
 <template>
@@ -67,9 +69,16 @@ const montoEnBolivares = computed(() => formatearBolivares(props.gasto.monto))
 
     <div class="gasto-right">
       <div class="monto-grupo">
-        <span class="monto">${{ gasto.monto.toFixed(2) }}</span>
-        <span v-if="disponible" class="monto-bs">{{ montoEnBolivares }}</span>
-        <span v-else-if="cargando" class="monto-bs placeholder">Bs …</span>
+        <span class="monto">{{ montoFormateado }}</span>
+        <span v-if="monedaActiva === 'ves' && disponible" class="monto-bs">
+          ${{ props.gasto.monto.toFixed(2) }}
+        </span>
+        <span v-if="monedaActiva === 'usd' && disponible && !cargando" class="monto-bs">
+          Bs …
+        </span>
+        <span v-else-if="cargando" class="monto-bs placeholder">
+          Bs …
+        </span>
       </div>
       <div class="gasto-actions">
         <router-link
