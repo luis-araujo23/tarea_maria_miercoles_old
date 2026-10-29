@@ -49,3 +49,19 @@ Cuentas de prueba (todas con la contraseña `1233`):
 | `admin` | Administrador |
 
 También se puede crear una cuenta nueva desde "Crear cuenta"; las cuentas nuevas tienen rol de usuario.
+
+## Rutas
+
+La navegación usa Vue Router, así que cambiar de pantalla no recarga la página.
+
+| Ruta | Pantalla | Acceso |
+|---|---|---|
+| `/login` | Inicio de sesión | Público |
+| `/signup` | Crear cuenta | Público |
+| `/app/materiales` | Catálogo de materiales y compras | Usuario y admin |
+| `/app/balance` | Mis deudas y abonos | Usuario (no aparece en el menú del admin) |
+| `/app/dashboard` | Dashboard de administración | Admin |
+| `/app/gastos` | Lista de gastos del grupo | Admin |
+| `/app/gastos/:id` | Detalle de un gasto (ruta dinámica) | Admin |
+
+Si alguien entra sin sesión a una ruta privada, se le redirige al login. Si un usuario normal intenta abrir una ruta de admin, se le redirige a Materiales.
