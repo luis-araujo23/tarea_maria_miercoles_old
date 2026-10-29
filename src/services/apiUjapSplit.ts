@@ -357,17 +357,6 @@ export function eliminarProducto(id: string): Promise<Producto[]> {
   })
 }
 
-export function eliminarPago(id: number): Promise<Pago[]> {
-  return transaccion((db) => {
-    if (!db.pagos.some((p) => p.id === id)) {
-      throw errorNoEncontrado(`El pago #${id} ya no existe`)
-    }
-
-    db.pagos = db.pagos.filter((p) => p.id !== id)
-    return db.pagos
-  })
-}
-
 // --- Compañeros -------------------------------------------------------------
 
 export function crearCompanero(nombre: string): Promise<Companero[]> {
@@ -381,35 +370,6 @@ export function crearCompanero(nombre: string): Promise<Companero[]> {
     }
 
     db.companeros = [...db.companeros, { id: siguienteIdCompanero(db.companeros), nombre: limpio }]
-    return db.companeros
-  })
-}
-
-export function eliminarCompanero(id: string): Promise<Companero[]> {
-  return transaccion((db) => {
-    const companero = db.companeros.find((c) => c.id === id)
-    if (!companero) throw errorNoEncontrado('Ese compañero ya no está en el grupo')
-
-    if (db.companeros.length <= 1) {
-      throw errorValidacion('Debe quedar al menos un compañero en el grupo')
-    }
-
-    // Borrarlo dejaría gastos y pagos apuntando a alguien inexistente.
-    const gastosLigados = db.gastos.filter(
-      (g) => g.pagadoPorId === id || g.divisiones.some((d) => d.companeroId === id),
-    ).length
-    const pagosLigados = db.pagos.filter((p) => p.deId === id || p.paraId === id).length
-
-    if (gastosLigados > 0 || pagosLigados > 0) {
-      const partes: string[] = []
-      if (gastosLigados > 0) partes.push(`${gastosLigados} gasto(s)`)
-      if (pagosLigados > 0) partes.push(`${pagosLigados} pago(s)`)
-      throw errorValidacion(
-        `No se puede eliminar a ${companero.nombre}: participa en ${partes.join(' y ')}`,
-      )
-    }
-
-    db.companeros = db.companeros.filter((c) => c.id !== id)
     return db.companeros
   })
 }

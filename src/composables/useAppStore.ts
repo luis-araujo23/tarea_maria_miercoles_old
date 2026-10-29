@@ -147,21 +147,9 @@ export function useAppStore() {
     })
   }
 
-  function eliminarPago(id: number) {
-    return ejecutar(async () => {
-      pagos.value = await api.eliminarPago(id)
-    })
-  }
-
   function agregarCompanero(nombre: string) {
     return ejecutar(async () => {
       companeros.value = await api.crearCompanero(nombre)
-    })
-  }
-
-  function eliminarCompanero(id: string) {
-    return ejecutar(async () => {
-      companeros.value = await api.eliminarCompanero(id)
     })
   }
 
@@ -220,9 +208,7 @@ export function useAppStore() {
     eliminarGasto,
     vaciarGastos,
     agregarPago,
-    eliminarPago,
     agregarCompanero,
-    eliminarCompanero,
     guardarCategoria,
     eliminarCategoria,
     comprarProducto,

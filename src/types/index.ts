@@ -1,7 +1,5 @@
 export type TipoDivision = 'igual' | 'porcentaje' | 'exacto'
 
-export type VistaApp = 'gastos' | 'materiales' | 'balance'
-
 export interface Companero {
   id: string
   nombre: string
