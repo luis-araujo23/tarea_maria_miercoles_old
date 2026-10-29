@@ -31,3 +31,21 @@ Luego abre en el navegador la dirección que muestra la terminal (normalmente `h
 | `npm run type-check` | Revisa los tipos de TypeScript. |
 | `npm run build` | Revisa los tipos y genera la versión de producción en `dist/`. |
 | `npm run preview` | Sirve localmente la versión de producción. |
+
+## Usuarios y roles
+
+La app tiene dos roles:
+
+- **Usuario:** compra materiales, elige con quién dividirlos y paga su parte en "Mis deudas". Solo puede registrar pagos de su propia cuenta.
+- **Administrador:** ve el dashboard con los saldos de todo el grupo y gestiona gastos y materiales.
+
+Cuentas de prueba (todas con la contraseña `1233`):
+
+| Usuario | Rol |
+|---|---|
+| `María` | Usuario |
+| `Juan` | Usuario |
+| `Carlos` | Usuario |
+| `admin` | Administrador |
+
+También se puede crear una cuenta nueva desde "Crear cuenta"; las cuentas nuevas tienen rol de usuario.
