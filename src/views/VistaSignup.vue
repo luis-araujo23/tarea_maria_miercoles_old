@@ -155,7 +155,7 @@ async function handleSubmit() {
         </div>
 
         <div class="field">
-          <label for="email">Correo electronico</label>
+          <label for="email">Correo electrónico</label>
           <input
             id="email"
             v-model="email"
@@ -173,13 +173,13 @@ async function handleSubmit() {
         </div>
 
         <div class="field">
-          <label for="password">Contrasena</label>
+          <label for="password">Contraseña</label>
           <input
             id="password"
             v-model="password"
             type="password"
             maxlength="64"
-            placeholder="Minimo 8 caracteres"
+            placeholder="Mínimo 8 caracteres"
             autocomplete="new-password"
             :class="{ invalid: errores.password }"
             :aria-invalid="!!errores.password"
@@ -191,18 +191,18 @@ async function handleSubmit() {
             {{ errores.password }}
           </p>
           <p v-else id="ayuda-password" class="field-hint">
-            Debe tener al menos 8 caracteres, una letra y un numero.
+            Debe tener al menos 8 caracteres, una letra y un número.
           </p>
         </div>
 
         <div class="field">
-          <label for="confirmar">Confirmar contrasena</label>
+          <label for="confirmar">Confirmar contraseña</label>
           <input
             id="confirmar"
             v-model="confirmarPassword"
             type="password"
             maxlength="64"
-            placeholder="Repite tu contrasena"
+            placeholder="Repite tu contraseña"
             autocomplete="new-password"
             :class="{ invalid: errores.confirmar }"
             :aria-invalid="!!errores.confirmar"
@@ -221,8 +221,8 @@ async function handleSubmit() {
       </form>
 
       <p class="auth-switch">
-        Ya tienes cuenta?
-        <router-link to="/login">Inicia sesion</router-link>
+        ¿Ya tienes cuenta?
+        <router-link to="/login">Inicia sesión</router-link>
       </p>
     </div>
 

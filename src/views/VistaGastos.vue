@@ -101,7 +101,7 @@ function solicitarEliminarGasto(id: number) {
   confirmacion.value = {
     visible: true,
     titulo: 'Eliminar gasto',
-    mensaje: `¿Eliminar "${gasto?.descripcion ?? 'este gasto'}"? Esta accion no se puede deshacer.`,
+    mensaje: `¿Eliminar "${gasto?.descripcion ?? 'este gasto'}"? Esta acción no se puede deshacer.`,
     confirmarTexto: 'Eliminar',
     onConfirmar: async () => {
       confirmacion.value.visible = false
@@ -137,7 +137,7 @@ function limpiarGastos() {
   confirmacion.value = {
     visible: true,
     titulo: 'Limpiar registros',
-    mensaje: '¿Eliminar todos los gastos? Los pagos registrados se mantendran.',
+    mensaje: '¿Eliminar todos los gastos? Los pagos registrados se mantendrán.',
     confirmarTexto: 'Limpiar todo',
     onConfirmar: async () => {
       confirmacion.value.visible = false

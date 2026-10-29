@@ -78,7 +78,7 @@ function cerrarSesion() {
             <span class="brand-sub">Gastos del Semestre</span>
           </div>
         </div>
-        <nav class="header-nav" aria-label="Navegacion principal">
+        <nav class="header-nav" aria-label="Navegación principal">
           <router-link v-if="esAdmin" to="/app/dashboard" class="nav-item" active-class="active">
             Dashboard
           </router-link>

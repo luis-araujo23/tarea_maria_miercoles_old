@@ -21,7 +21,7 @@ function handleSubmit() {
     return
   }
   if (!password.value) {
-    error.value = 'Ingresa tu contrasena'
+    error.value = 'Ingresa tu contraseña'
     return
   }
 
@@ -32,7 +32,7 @@ function handleSubmit() {
     cargando.value = false
 
     if (!ok) {
-      error.value = 'Usuario o contrasena incorrectos'
+      error.value = 'Usuario o contraseña incorrectos'
       return
     }
 
@@ -57,18 +57,18 @@ function handleSubmit() {
             id="usuario"
             v-model="nombre"
             type="text"
-            placeholder="Nombre o correo electronico"
+            placeholder="Nombre o correo electrónico"
             autocomplete="username"
           />
         </div>
 
         <div class="field">
-          <label for="password">Contrasena</label>
+          <label for="password">Contraseña</label>
           <input
             id="password"
             v-model="password"
             type="password"
-            placeholder="Tu contrasena"
+            placeholder="Tu contraseña"
             autocomplete="current-password"
           />
         </div>
