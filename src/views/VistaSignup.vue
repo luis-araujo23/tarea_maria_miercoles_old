@@ -16,8 +16,8 @@ import {
 type Campo = 'nombre' | 'apellido' | 'email' | 'password' | 'confirmar'
 
 const router = useRouter()
-const { signup } = useAuth()
-const { agregarCompanero } = useAppStore()
+const { signup, asignarCompanero } = useAuth()
+const { agregarCompanero, companeros } = useAppStore()
 
 const nombre = ref('')
 const apellido = ref('')
@@ -86,7 +86,7 @@ async function handleSubmit() {
 
   cargando.value = true
 
-  const resultado = signup(nombre.value, apellido.value, email.value, password.value)
+  const resultado = await signup(nombre.value, apellido.value, email.value, password.value)
 
   if (!resultado.ok) {
     cargando.value = false
@@ -100,6 +100,12 @@ async function handleSubmit() {
   // porque ese nombre ya estaba) la cuenta igual quedó creada.
   const nombreVisible = `${nombre.value.trim()} ${apellido.value.trim()}`.replace(/\s+/g, ' ')
   await agregarCompanero(nombreVisible)
+
+  // Vincula la sesión recién creada con el Companero.id (FK Usuario → Companero).
+  const nuevoCompanero = companeros.value.find((c) => c.nombre === nombreVisible)
+  if (nuevoCompanero) {
+    asignarCompanero(nuevoCompanero.id)
+  }
 
   cargando.value = false
   router.push({ name: 'materiales' })

@@ -7,7 +7,7 @@ import EstadoDatos from '../components/EstadoDatos.vue'
 import ToastNotificacion from '../components/ToastNotificacion.vue'
 import type { UsuarioPublico } from '../composables/useAuth'
 import { companeroDeUsuario, companeroPorNombre } from '../utils/perfil'
-import { validarCompra, validarProducto } from '../utils/validaciones'
+import { validarCategoria, validarCompra, validarProducto } from '../utils/validaciones'
 
 const { usuario, esAdmin, listarUsuarios } = useAuth()
 const {
@@ -24,6 +24,7 @@ const {
   agregarCompanero,
   guardarProducto,
   eliminarProducto,
+  guardarCategoria,
 } = useAppStore()
 
 const toast = ref({ visible: false, mensaje: '', tipo: 'success' as 'success' | 'error' | 'info' })
@@ -214,6 +215,47 @@ async function quitarProducto(id: string) {
   const fallo = await eliminarProducto(id)
   mostrarToast(fallo ?? 'Producto eliminado', fallo ? 'error' : 'success')
 }
+
+const showFormCat = ref(false)
+const formCatNombre = ref('')
+const formCatIcono = ref('📁')
+const errorCat = ref('')
+
+const ICONOS_CAT = ['📁', '📚', '🔬', '🎨', '💻', '📐', '🎒', '🖨️']
+
+function abrirFormCat() {
+  formCatNombre.value = ''
+  formCatIcono.value = '📁'
+  errorCat.value = ''
+  showFormCat.value = true
+}
+
+function cerrarFormCat() {
+  showFormCat.value = false
+  errorCat.value = ''
+}
+
+async function guardarFormCategoria() {
+  const datos = {
+    nombre: formCatNombre.value.trim(),
+    icono: formCatIcono.value,
+    keywords: [],
+  }
+  const err = validarCategoria(datos, categorias.value)
+  if (err) {
+    errorCat.value = err
+    return
+  }
+
+  const fallo = await guardarCategoria(datos)
+  if (fallo) {
+    errorCat.value = fallo
+    return
+  }
+
+  mostrarToast(`Categoría "${datos.nombre}" creada`)
+  cerrarFormCat()
+}
 </script>
 
 <template>
@@ -233,9 +275,14 @@ async function quitarProducto(id: string) {
               : 'Elige un producto y con quién lo vas a pagar. El costo se divide en partes iguales.' }}
           </p>
         </div>
-        <button v-if="esAdmin" type="button" class="btn-add" :disabled="guardando" @click="abrirForm()">
-          + Nuevo producto
-        </button>
+        <div v-if="esAdmin" class="btn-group-admin">
+          <button type="button" class="btn-cat" :disabled="guardando" @click="abrirFormCat()">
+            + Nueva categoría
+          </button>
+          <button type="button" class="btn-add" :disabled="guardando" @click="abrirForm()">
+            + Nuevo producto
+          </button>
+        </div>
       </div>
 
       <p v-if="!esAdmin && !yo" class="aviso">
@@ -379,6 +426,40 @@ async function quitarProducto(id: string) {
         </div>
       </div>
 
+      <div v-if="showFormCat" class="overlay" @click.self="cerrarFormCat">
+        <div class="modal">
+          <h3>Nueva categoría de materiales</h3>
+          <form @submit.prevent="guardarFormCategoria">
+            <label class="field">
+              Nombre de la categoría
+              <input v-model="formCatNombre" type="text" placeholder="Ej: Laboratorio, Fotocopias..." :disabled="guardando" />
+            </label>
+            <div class="field">
+              Ícono
+              <div class="icon-grid">
+                <button
+                  v-for="icon in ICONOS_CAT"
+                  :key="icon"
+                  type="button"
+                  class="icon-btn"
+                  :class="{ selected: formCatIcono === icon }"
+                  @click="formCatIcono = icon"
+                >
+                  {{ icon }}
+                </button>
+              </div>
+            </div>
+            <p v-if="errorCat" class="error">{{ errorCat }}</p>
+            <div class="form-actions">
+              <button type="button" class="btn-cancel" :disabled="guardando" @click="cerrarFormCat">Cancelar</button>
+              <button type="submit" class="btn-save" :disabled="guardando">
+                {{ guardando ? 'Guardando…' : 'Crear categoría' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <ToastNotificacion :visible="toast.visible" :mensaje="toast.mensaje" :tipo="toast.tipo" />
     </div>
   </EstadoDatos>
@@ -501,6 +582,30 @@ async function quitarProducto(id: string) {
   background: transparent;
   border: 1px solid var(--color-danger);
   color: var(--color-danger);
+}
+
+.btn-group-admin {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.btn-cat {
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  font-family: inherit;
+  background: white;
+  border: 1px solid var(--ujap-blue);
+  color: var(--ujap-blue);
+  transition: all var(--transition);
+}
+
+.btn-cat:hover:not(:disabled) {
+  background: var(--color-primary-light);
 }
 
 button:disabled {

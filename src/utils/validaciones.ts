@@ -285,6 +285,7 @@ export function validarPagoDeCompra(
   if (!deId || !paraId) return 'Selecciona quién paga y quién recibe'
   if (!companeros.some((c) => c.id === deId)) return 'El pagador no existe en el grupo'
   if (!companeros.some((c) => c.id === paraId)) return 'El receptor no existe en el grupo'
+  if (deId === paraId) return 'El pagador y receptor deben ser distintos'
   if (typeof monto !== 'number' || Number.isNaN(monto) || monto <= 0) {
     return 'Ingresa un monto válido mayor a 0'
   }

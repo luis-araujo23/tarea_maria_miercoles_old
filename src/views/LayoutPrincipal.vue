@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { useAppStore } from '../composables/useAppStore'
 import { useTasaCambio } from '../composables/useTasaCambio'
 import UjapLogo from '../components/UjapLogo.vue'
 import ModalConfirmacion from '../components/ModalConfirmacion.vue'
+import ToastNotificacion from '../components/ToastNotificacion.vue'
 import AppFooter from '../components/AppFooter.vue'
 import { companeroDeUsuario } from '../utils/perfil'
 
@@ -30,7 +31,29 @@ const {
   restaurarDesdeServidor,
   agregarCompanero,
   companeros,
+  ultimoEvento,
 } = useAppStore()
+
+const toastGlobal = ref({
+  visible: false,
+  mensaje: '',
+  tipo: 'success' as 'success' | 'error' | 'info',
+})
+let timerToastGlobal: ReturnType<typeof setTimeout> | null = null
+
+watch(ultimoEvento, (evento) => {
+  if (evento) {
+    toastGlobal.value = {
+      visible: true,
+      mensaje: evento.mensaje,
+      tipo: 'success',
+    }
+    if (timerToastGlobal) clearTimeout(timerToastGlobal)
+    timerToastGlobal = setTimeout(() => {
+      toastGlobal.value.visible = false
+    }, 4500)
+  }
+})
 
 // Los gastos del grupo se piden en el setup del layout, antes de que se creen
 // las vistas hijas, para que ninguna alcance a renderizarse con listas vacias.
@@ -183,6 +206,12 @@ function cerrarSesion() {
       confirmar-texto="Restaurar"
       @confirmar="restaurar"
       @cancelar="restauracionVisible = false"
+    />
+
+    <ToastNotificacion
+      :visible="toastGlobal.visible"
+      :mensaje="toastGlobal.mensaje"
+      :tipo="toastGlobal.tipo"
     />
   </div>
 </template>

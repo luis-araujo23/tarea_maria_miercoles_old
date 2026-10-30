@@ -40,7 +40,11 @@ async function agregar() {
   }
 
   const nombre = nombreNuevo.value.trim()
-  // El duplicado y el resto de reglas los decide el servidor con su propia lista.
+  if (companeros.value.some((c) => c.nombre.trim().toLowerCase() === nombre.toLowerCase())) {
+    errorNombre.value = `"${nombre}" ya forma parte del grupo`
+    return
+  }
+
   const fallo = await agregarCompanero(nombre)
   if (fallo) {
     errorNombre.value = fallo
@@ -53,6 +57,9 @@ async function agregar() {
 
 async function eliminar(id: string) {
   const nombre = companeros.value.find((c) => c.id === id)?.nombre ?? ''
+  if (!window.confirm(`¿Estás seguro de que deseas eliminar a "${nombre}" del grupo?`)) {
+    return
+  }
 
   const fallo = await eliminarCompanero(id)
   mostrarToast(fallo ?? `${nombre} eliminado del grupo`, fallo ? 'error' : 'success')

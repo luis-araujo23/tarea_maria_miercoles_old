@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import type { RolUsuario, Usuario } from '../types'
+import { enviarJson, obtenerJson } from '../services/clienteHttp'
 
 const AUTH_KEY = 'ujap-split-auth'
 const USERS_KEY = 'ujap-split-users'
@@ -19,6 +20,13 @@ const CUENTAS_BASE: Cuenta[] = [
   { nombre: 'Carlos', apellido: '', email: 'carlos@ujap.edu.ve', clave: CLAVE_ASIGNADA, rol: 'usuario' },
   { nombre: 'admin', apellido: '', email: 'admin@ujap.edu.ve', clave: CLAVE_ASIGNADA, rol: 'admin' },
 ]
+
+/** Mapa de cuentas base → Companero.id que garantiza la relación Usuario ↔ Companero. */
+const COMPANERO_DE_CUENTA: Record<string, string> = {
+  'maria@ujap.edu.ve': 'c1',
+  'juan@ujap.edu.ve': 'c2',
+  'carlos@ujap.edu.ve': 'c3',
+}
 
 export interface UsuarioPublico {
   nombre: string
@@ -91,6 +99,7 @@ function sesionDeCuenta(cuenta: Cuenta): Usuario {
     apellido: cuenta.apellido,
     email: cuenta.email,
     rol: cuenta.rol,
+    companeroId: COMPANERO_DE_CUENTA[cuenta.email],
   }
 }
 
@@ -102,6 +111,8 @@ function cargarUsuario(cuentas: Cuenta[]): Usuario | null {
     const nombre = typeof parsed.nombre === 'string' ? parsed.nombre : ''
     const email = typeof parsed.email === 'string' ? parsed.email : ''
     const rol = parsed.rol === 'admin' || parsed.rol === 'usuario' ? parsed.rol : null
+    const companeroId =
+      typeof parsed.companeroId === 'string' ? parsed.companeroId : undefined
     const cuenta = cuentas.find(
       (c) =>
         (nombre && normalizarNombre(nombreVisible(c)) === normalizarNombre(nombre)) ||
@@ -109,7 +120,9 @@ function cargarUsuario(cuentas: Cuenta[]): Usuario | null {
         (email && normalizarEmail(c.email) === normalizarEmail(email)),
     )
     if (cuenta && rol === cuenta.rol) {
-      return sesionDeCuenta(cuenta)
+      const sesion = sesionDeCuenta(cuenta)
+      // Prioriza el companeroId persistido; si no existe, usa el del mapa base.
+      return { ...sesion, companeroId: companeroId ?? sesion.companeroId }
     }
   } catch {
     /* ignore */
@@ -133,6 +146,33 @@ function todasLasCuentas() {
 
 const usuario = ref<Usuario | null>(cargarUsuario(todasLasCuentas()))
 
+async function sincronizarCuentasDesdeServidor() {
+  try {
+    const usuariosRemotos = await obtenerJson<
+      { id: string; nombre: string; apellido?: string; email: string }[]
+    >('auth/usuarios')
+    if (Array.isArray(usuariosRemotos)) {
+      let cambio = false
+      for (const u of usuariosRemotos) {
+        if (!todasLasCuentas().some((c) => c.email.toLowerCase() === u.email.toLowerCase())) {
+          cuentasRegistradas.value.push({
+            nombre: u.nombre,
+            apellido: u.apellido || '',
+            email: u.email,
+            clave: CLAVE_ASIGNADA,
+            rol: 'usuario',
+          })
+          cambio = true
+        }
+      }
+      if (cambio) guardarCuentasRegistradas(cuentasRegistradas.value)
+    }
+  } catch {
+    /* ignore */
+  }
+}
+sincronizarCuentasDesdeServidor()
+
 export function useAuth() {
   const autenticado = computed(() => usuario.value !== null)
   const esAdmin = computed(() => usuario.value?.rol === 'admin')
@@ -149,7 +189,21 @@ export function useAuth() {
     )
   }
 
-  function login(identificador: string, clave: string): boolean {
+  async function login(identificador: string, clave: string): Promise<boolean> {
+    try {
+      const res = await enviarJson<{ ok: boolean; usuario: Usuario }>('auth/login', 'POST', {
+        identificador,
+        clave,
+      })
+      if (res?.ok && res.usuario) {
+        usuario.value = res.usuario
+        guardarUsuario(res.usuario)
+        return true
+      }
+    } catch {
+      // Fallback a cuentas locales
+    }
+
     const cuenta = buscarCuenta(identificador, clave)
     if (!cuenta) return false
 
@@ -159,12 +213,12 @@ export function useAuth() {
     return true
   }
 
-  function signup(
+  async function signup(
     nombre: string,
     apellido: string,
     email: string,
     clave: string,
-  ): ResultadoSignup {
+  ): Promise<ResultadoSignup> {
     const nombreLimpio = limpiarTexto(nombre)
     const apellidoLimpio = limpiarTexto(apellido)
     const emailLimpio = normalizarEmail(email)
@@ -172,25 +226,52 @@ export function useAuth() {
     const errores: ResultadoSignup['errores'] = {}
 
     if (normalizarNombre(nombreLimpio) === 'admin') {
-      errores.nombre = 'Este nombre no esta disponible'
+      errores.nombre = 'Este nombre no está disponible'
     }
 
     const ocupadoNombre = todasLasCuentas().some(
       (c) => normalizarNombre(nombreVisible(c)) === normalizarNombre(visible),
     )
     if (!errores.nombre && ocupadoNombre) {
-      errores.apellido = 'Este nombre y apellido ya estan registrados'
+      errores.apellido = 'Este nombre y apellido ya están registrados'
     }
 
     const ocupadoEmail = todasLasCuentas().some(
       (c) => normalizarEmail(c.email) === emailLimpio,
     )
     if (ocupadoEmail) {
-      errores.email = 'Este correo ya esta registrado'
+      errores.email = 'Este correo ya está registrado'
     }
 
     if (Object.keys(errores).length > 0) {
       return { ok: false, errores }
+    }
+
+    try {
+      const res = await enviarJson<{ ok: boolean; usuario: Usuario }>('auth/signup', 'POST', {
+        nombre: nombreLimpio,
+        apellido: apellidoLimpio,
+        email: emailLimpio,
+        clave,
+      })
+
+      if (res?.ok && res.usuario) {
+        const nueva: Cuenta = {
+          nombre: nombreLimpio,
+          apellido: apellidoLimpio,
+          email: emailLimpio,
+          clave,
+          rol: 'usuario',
+        }
+        cuentasRegistradas.value = [...cuentasRegistradas.value, nueva]
+        guardarCuentasRegistradas(cuentasRegistradas.value)
+
+        usuario.value = res.usuario
+        guardarUsuario(res.usuario)
+        return { ok: true, errores: {} }
+      }
+    } catch {
+      // Fallback a almacenamiento local si el backend no responde
     }
 
     const nueva: Cuenta = {
@@ -207,12 +288,20 @@ export function useAuth() {
     const sesion = sesionDeCuenta(nueva)
     usuario.value = sesion
     guardarUsuario(sesion)
+
     return { ok: true, errores: {} }
   }
 
   function logout() {
     usuario.value = null
     guardarUsuario(null)
+  }
+
+  /** Vincula la sesión actual con un Companero.id (se llama tras crear la cuenta). */
+  function asignarCompanero(companeroId: string) {
+    if (!usuario.value) return
+    usuario.value = { ...usuario.value, companeroId }
+    guardarUsuario(usuario.value)
   }
 
   /** Cuentas reales de la app, sin contraseña ni administradores. */
@@ -234,6 +323,7 @@ export function useAuth() {
     login,
     signup,
     logout,
+    asignarCompanero,
     listarUsuarios,
   }
 }

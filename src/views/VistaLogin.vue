@@ -13,31 +13,34 @@ const password = ref('')
 const error = ref('')
 const cargando = ref(false)
 
-function handleSubmit() {
+async function handleSubmit() {
   error.value = ''
 
   if (!nombre.value.trim()) {
-    error.value = 'Ingresa tu nombre de usuario'
+    error.value = 'Ingresa tu usuario o correo electrónico'
     return
   }
   if (!password.value) {
-    error.value = 'Ingresa tu contrasena'
+    error.value = 'Ingresa tu contraseña'
     return
   }
 
   cargando.value = true
 
-  setTimeout(() => {
-    const ok = login(nombre.value.trim(), password.value)
+  try {
+    const ok = await login(nombre.value.trim(), password.value)
     cargando.value = false
 
     if (!ok) {
-      error.value = 'Usuario o contrasena incorrectos'
+      error.value = 'Usuario o contraseña incorrectos'
       return
     }
 
     router.push({ name: esAdmin.value ? 'dashboard' : 'materiales' })
-  }, 400)
+  } catch {
+    cargando.value = false
+    error.value = 'Error al conectar con el servidor de autenticación'
+  }
 }
 </script>
 
